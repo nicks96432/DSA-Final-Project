@@ -1,26 +1,41 @@
 #include <iostream>
-#include <fstream>
+#include <vector>
 #include <string>
-// #include "mails.hpp"
+#include <set>
+#include <map>
 using namespace std;
-int main(int argc, char const *argv[])
-{
-	ios_base::sync_with_stdio(false);
-	cin.tie(NULL);
-	ifstream file("../final/test_data/mail1");
-	string tmp;
-	for (int _ = 0; _ < 7; _++)
-	{
-		file >> tmp;
-		cout << tmp << '\n';
+
+struct Content {
+	string 
+}
+struct Mail {
+	string from;
+	string date;
+	string ID;
+	string subject;
+	string to;
+	Content content;
+};
+void add() {
+	string path;
+	cin >> path;
+	fp = open(path, "r");
+
+}
+
+int main() {
+	string s;
+	while (cin >> s) {
+		if (s[0] == 'a') {
+			add();
+		} else if (s[0] == 'r') {
+			remove();
+		} else if (s[0] == 'l') {
+			longest();
+		} else { 
+			query();
+		}
 	}
-	int n;
-	file >> n;
-	cout << n << '\n';
-	file >> n;
-	cout << n << '\n';
-	file >> tmp;
-	cout << tmp << '\n';
-	file.close();
+
 	return 0;
 }
