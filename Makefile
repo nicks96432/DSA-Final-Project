@@ -1,8 +1,8 @@
 all:
-	g++ main.cpp -o main -O2 -std=c++11
+	g++ main.cpp -o run -O2 -std=c++11
 clean:
-	rm -rf main
+	rm -rf run
 run:
-	./main
+	run
 debug_run:
-	/usr/bin/time -v ./main
+	/usr/bin/time -v ./run

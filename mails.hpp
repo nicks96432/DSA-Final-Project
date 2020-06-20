@@ -53,6 +53,17 @@ static inline void reset(std::stringstream &ss)
 	ss.clear();
 	ss.str(std::string());
 }
+static std::istream &myGetline(std::istream &in, std::string &str)
+{
+	str.clear();
+	char c;
+	while ((c = in.get()) <= 32 && !in.fail());
+	if (c != 4)
+		str.push_back(c);
+	while ((c = in.get()) != '\n' && !in.fail())
+		str.push_back(c);
+	return in;
+}
 /* 信件格式範例
  * From: Tim
  * Date: 19 May 2011 at 16:50
@@ -82,31 +93,32 @@ public:
 	Mail(const std::string &p)
 	{
 		std::ifstream file(p);
+		file.sync_with_stdio(false);
+		file.tie(NULL);
 		if (file.fail())
 			throw std::runtime_error(p + ": No such file or directory.");
 		path = p;
 		isopen = true;
-		std::string tmp;
+		std::string tmp(50, '\0');
 		char _;
 		// From from
-		file >> tmp >> from >> _; // '\nD'
+		std::getline(file, tmp);
+		from = std::string(tmp.begin() + 6, tmp.end());
 		// Date day
-		getline(file, tmp);
-		std::stringstream ss;
-		ss.str(tmp);
-		ss >> tmp >> datetime.tm_mday >> tmp;
-		auto it = month_to_number.find(tmp);
+		std::getline(file, tmp);
+		char tmp2[12];
+		sscanf(tmp.c_str(), "Date: %d %s %d at %d:%d", &datetime.day,
+			   tmp2, &datetime.year, &datetime.hour, &datetime.minute);
+		auto it = month_to_number.find(tmp2);
 		if (it == month_to_number.cend())
-			throw std::out_of_range("invalid month");
-		datetime.tm_mon = it->second;
-		ss >> datetime.tm_year >> tmp >>
-			datetime.tm_hour >> _ >> datetime.tm_min;
+			throw std::out_of_range("invalid month: " + std::string(tmp2));
+		datetime.month = it->second;
 		// Message-ID
-		file >> tmp >> MessageID >> _; // '\nS'
+		std::getline(file, tmp);
+		sscanf(tmp.c_str(), "Message-ID: %d", &MessageID);
 		// Subject
 		std::getline(file, tmp);
-		tmp.erase(0, 8);
-		for (auto iter = tmp.begin(); iter <= tmp.end(); ++iter)
+		for (auto iter = tmp.begin() + 8; iter <= tmp.end(); ++iter)
 		{
 			while (iter <= tmp.end() && !isAlnum(*iter))
 				++iter;
@@ -116,12 +128,13 @@ public:
 			subject.insert(std::string(start, iter));
 		}
 		// To
-		file >> tmp >> to >> _; // '\n'
+		std::getline(file, tmp);
+		to = std::string(tmp.begin() + 4, tmp.end());
 		// content:
-		getline(file, tmp);
+		std::getline(file, tmp);
 		// real content
 		charcount = 0;
-		while (getline(file, tmp))
+		while (std::getline(file, tmp))
 		{
 			for (auto iter = tmp.begin(); iter <= tmp.end(); ++iter)
 			{
@@ -136,6 +149,8 @@ public:
 			}
 		}
 		file.close();
+		// std::cout << *this;
+		// exit(-1);
 	}
 	inline int ID() const
 	{
@@ -144,11 +159,11 @@ public:
 	void print(std::ostream &out = std::cout) const
 	{
 		out << "From: " << from << '\n';
-		out << "Date: " << datetime.tm_mday << ' '
-			<< number_to_month[datetime.tm_mon] << ' '
-			<< datetime.tm_year << " at "
-			<< datetime.tm_hour << ':'
-			<< datetime.tm_min << '\n';
+		out << "Date: " << datetime.day << ' '
+			<< number_to_month[datetime.month] << ' '
+			<< datetime.year << " at "
+			<< datetime.hour << ':'
+			<< datetime.minute << '\n';
 		out << "Message-ID: " << MessageID << '\n';
 		out << "Subject: ";
 		for (const auto &str : subject)
@@ -181,7 +196,11 @@ public:
 	}
 
 private:
-	std::tm datetime;
+	struct Datetime
+	{
+		int year, month, day, hour, minute;
+	};
+	Datetime datetime;
 	std::string from, to;
 	int MessageID;
 	std::string path;
@@ -199,18 +218,22 @@ public:
 	void add(const std::string &path)
 	{
 		auto it = maildata_path.find(path);
-		if (it != maildata_path.end() && it->second.isOpen())
+		if (it != maildata_path.end())
 		{
-			std::cout << "-\n";
-			return;
-		}
-		else if (it != maildata_path.end() && !it->second.isOpen())
-		{
-			it->second.openFile();
-			std::push_heap(maildata_heap.begin(), maildata_heap.begin() + ++count,
-						   iterator_compare);
-			std::cout << count << '\n';
-			return;
+			if (it->second.isOpen())
+			{
+				std::cout << "-\n";
+				return;
+			}
+			else
+			{
+				it->second.openFile();
+				maildata_heap.push_back(it);
+				std::push_heap(maildata_heap.begin(), maildata_heap.begin() + ++count,
+							   iterator_compare);
+				std::cout << count << '\n';
+				return;
+			}
 		}
 		else
 		{
@@ -221,7 +244,7 @@ public:
 			maildata_heap.push_back(it);
 			std::push_heap(maildata_heap.begin(), maildata_heap.begin() + ++count,
 						   iterator_compare);
-			std::cout << count << '\n';
+			// std::cout << count << '\n';
 		}
 	}
 	void remove(const int &id)
@@ -235,6 +258,7 @@ public:
 		it->second->second.closeFile();
 		std::pop_heap(maildata_heap.begin(), maildata_heap.begin() + count--,
 					  iterator_compare);
+		maildata_heap.pop_back();
 		std::cout << count << '\n';
 	}
 	/* -f <from>
@@ -247,6 +271,27 @@ public:
 	 */
 	void query(const std::string &commands)
 	{
+		std::stringstream ss;
+		ss << commands;
+		std::string tmp;
+		while (ss >> tmp)
+		{
+			if (tmp.front() == '-')
+				switch (tmp.at(2))
+				{
+				case 'f':
+					break;
+				case 't':
+					break;
+				case 'd':
+					break;
+				default:
+					break;
+				}
+		}
+		std::cout << commands << '\n';
+		// std::cout << "-\n";
+		return;
 	}
 	void longest(void) const
 	{
