@@ -4,3 +4,10 @@ final_project.pdf
 *.out
 run
 upload.sh
+.DS_Store
+*.in
+*.zip
+expression.cpp
+*.txt
+*out
+temp*
