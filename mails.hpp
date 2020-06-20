@@ -6,7 +6,7 @@
 
 #include <set>
 #include <map>
-#include <ctime>
+#include <queue>
 #include <vector>
 #include <string>
 #include <sstream>
@@ -49,6 +49,13 @@ static const std::string number_to_month[12] =
 		std::string("December")
 
 };
+inline void string_lower(std::string &str)
+{
+	for (auto &it : str)
+		if (std::isupper(it))
+			it = std::tolower(it);
+	return;
+}
 /* 信件格式範例
  * From: Tim
  * Date: 19 May 2011 at 16:50
@@ -59,15 +66,10 @@ static const std::string number_to_month[12] =
  * Minas-Rio is an iron ore mining project in Brazil.[1] It is one of the world's largest mining projects, and is initially expected to export 26.5 million tonnes of iron ore in 2013, through a 525km slurry pipeline to a port at Au;[2] production potential is 53 Mtpa or higher.[3] The project was bought by Anglo American PLC, which is facing high costs.[4][5] The mine has certified reserves of 4.6 billion tonnes of itabirite.[6] There have been delays in starting the project, but in December 2010, Anglo American obtained a key license needed from Brazilian government before mining could start.[7][8] 
  * I read the paragraph on http://wikipedia.org
  */
-inline void string_lower(std::string &str)
-{
-	for (auto &it : str)
-		if (std::isupper(it))
-			it = std::tolower(it);
-	return;
-}
 class Mail
 {
+	friend class Mails;
+
 public:
 	Mail()
 	{
@@ -145,7 +147,7 @@ public:
 					*iter = std::tolower(*iter);
 				++iter;
 			}
-			subject.insert(std::string(start, iter));
+			content.insert(std::string(start, iter));
 		}
 		// To
 		std::getline(file, tmp);
@@ -242,9 +244,19 @@ private:
 	std::string from, to;
 	int MessageID;
 	std::string path;
-	std::set<std::string> content, subject;
+	std::set<std::string> content;
 	int charcount;
 	bool isopen;
+};
+template <>
+struct std::less<Mail *>
+{
+	bool operator()(const Mail *x, const Mail *y)
+	{
+		if (x->ContentLength() == y->ContentLength())
+			return x->ID() < y->ID();
+		return x->ContentLength() < y->ContentLength();
+	}
 };
 class Mails
 {
@@ -254,25 +266,22 @@ public:
 		count = 0;
 		maildata_ID.reserve(10000);
 		maildata_path.reserve(10000);
-		maildata_heap.reserve(10000);
 	}
-	void add(const std::string &path)
+	void add(const std::string &path, std::ostream &out = std::cout)
 	{
 		auto it = maildata_path.find(path);
 		if (it != maildata_path.end())
 		{
 			if (it->second.isOpen())
 			{
-				std::cout << "-\n";
+				out << "-\n";
 				return;
 			}
 			else
 			{
 				it->second.openFile();
-				maildata_heap.push_back(&it->second);
-				std::push_heap(maildata_heap.begin(), maildata_heap.begin() + ++count,
-							   compare);
-				std::cout << count << '\n';
+				maildata_heap.push(&it->second);
+				out << ++count << '\n';
 				return;
 			}
 		}
@@ -281,25 +290,21 @@ public:
 			Mail mail(path);
 			maildata_path[path] = mail;
 			maildata_ID[mail.ID()] = &maildata_path[path];
-			maildata_heap.push_back(&maildata_path[path]);
-			std::push_heap(maildata_heap.begin(), maildata_heap.begin() + ++count,
-						   compare);
-			std::cout << count << '\n';
+			maildata_heap.push(&maildata_path[path]);
+			out << ++count << '\n';
 		}
 	}
-	void remove(const int &id)
+	void remove(const int &id, std::ostream &out = std::cout)
 	{
 		auto it = maildata_ID.find(id);
 		if (it == maildata_ID.end() || !it->second->isOpen())
 		{
-			std::cout << "-\n";
+			out << "-\n";
 			return;
 		}
 		it->second->closeFile();
-		std::pop_heap(maildata_heap.begin(), maildata_heap.begin() + count--,
-					  compare);
-		maildata_heap.pop_back();
-		std::cout << count << '\n';
+		maildata_heap.pop();
+		out << --count << '\n';
 	}
 	/* -f <from>
 	 * -t <to>
@@ -309,53 +314,65 @@ public:
 	 * 
 	 * 
 	 */
-	void query(const std::string &commands)
+	void query(const std::string &commands, std::ostream &out = std::cout)
 	{
 		std::cout << commands << '\n';
 		return;
-		std::string tmp;
-		for(auto it = commands.begin();it!=commands.end();++it)
+		std::string from, to;
+		long long start_time, end_time;
+		for (auto it = commands.begin() + 1; it < commands.end(); ++it)
 		{
-			if (tmp.front() == '-')
-				switch (tmp.at(2))
+			if (*it == '-')
+			{
+				switch (*(++it))
 				{
 				case 'f':
-
+					auto start = ++it;
+					while (*(++it) != '\"')
+						;
+					from = std::string(start + 1, it - 1);
 					break;
 				case 't':
+					auto start = ++it;
+					while (*(++it) != '\"')
+						;
+					to = std::string(start + 1, it - 1);
 					break;
 				case 'd':
+					auto start = ++it;
+					while (it < commands.end() && *it != ' ')
+						++it;
+					sscanf(std::string(start, it - 1).c_str(), "%lld~%lld", &start_time, &end_time);
 					break;
 				default:
+					throw std::out_of_range("unknown option: -" + *it);
 					break;
 				}
+			}
+			else
+			{
+			}
 		}
-		std::cout << commands << '\n';
-		std::cout << "-\n";
+		out << commands << '\n';
+		out << "-\n";
 		return;
 	}
-	void longest(void) const
+	void longest(std::ostream &out = std::cout) const
 	{
 		if (count == 0)
 		{
 			std::cout << "-\n";
 			return;
 		}
-		std::cout << maildata_heap.front()->ID() << ' '
-				  << maildata_heap.front()->ContentLength() << '\n';
+		out << maildata_heap.top()->ID() << ' '
+			<< maildata_heap.top()->ContentLength() << '\n';
 	}
 
 private:
 	int count;
 	std::unordered_map<std::string, Mail> maildata_path;
 	std::unordered_map<int, Mail *> maildata_ID;
-	std::vector<const Mail *> maildata_heap;
-	std::function<bool(const Mail *&, const Mail *&)> compare =
-		[](const Mail *&x, const Mail *&y) -> bool {
-		if (x->ContentLength() == y->ContentLength())
-			return x->ID() < y->ID();
-		return x->ContentLength() < y->ContentLength();
-	};
+	std::priority_queue<Mail *, std::vector<Mail *>> maildata_heap;
 };
 
 #endif

@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <unordered_set>
 #include "mails.hpp"
@@ -18,14 +19,7 @@ int main(int argc, char const *argv[])
 	Mails mails;
 	string command, path;
 	int id;
-	// for (int i = 1; i <= 1; i++)
-	// {
-
-	// 	string str = "../final/test_data/mail";
-	// 	str.append(to_string(i));
-	// 	mails.add(str);
-	// 	cout << Mail(str);
-	// }
+	ofstream out("out", ios::out);
 	while (cin >> command)
 	{
 		auto it = commands.find(command);
@@ -35,18 +29,18 @@ int main(int argc, char const *argv[])
 		{
 		case 'a':
 			cin >> path;
-			mails.add(path);
+			mails.add(path,out);
 			break;
 		case 'r':
 			cin >> id;
-			mails.remove(id);
+			mails.remove(id,out);
 			break;
 		case 'q':
 			getline(cin, path);
-			mails.query(path);
+			mails.query(path,out);
 			break;
 		default: // longest
-			mails.longest();
+			mails.longest(out);
 			break;
 		}
 	}
