@@ -33,22 +33,6 @@ static const std::unordered_map<std::string, int> month_to_number =
 		{"December", 11}
 
 };
-static const std::string number_to_month[12] =
-	{
-		std::string("January"),
-		std::string("February"),
-		std::string("March"),
-		std::string("April"),
-		std::string("May"),
-		std::string("June"),
-		std::string("July"),
-		std::string("August"),
-		std::string("September"),
-		std::string("October"),
-		std::string("November"),
-		std::string("December")
-
-};
 inline void string_lower(std::string &str)
 {
 	for (auto &it : str)
@@ -177,12 +161,24 @@ public:
 		}
 		file.close();
 	}
-	inline int ID() const
-	{
-		return MessageID;
-	}
 	void print(std::ostream &out = std::cout) const
 	{
+		const std::string number_to_month[12] =
+			{
+				std::string("January"),
+				std::string("February"),
+				std::string("March"),
+				std::string("April"),
+				std::string("May"),
+				std::string("June"),
+				std::string("July"),
+				std::string("August"),
+				std::string("September"),
+				std::string("October"),
+				std::string("November"),
+				std::string("December")
+
+			};
 		out << "From: " << from << '\n';
 		out << "Date: " << datetime.day << ' '
 			<< number_to_month[datetime.month] << ' '
@@ -191,8 +187,6 @@ public:
 			<< datetime.minute << '\n';
 		out << "Message-ID: " << MessageID << '\n';
 		out << "Subject: ";
-		for (const auto &str : subject)
-			out << str << ' ';
 		out << "\nTo: " << to << '\n';
 		out << "Content:\n";
 		for (const auto &str : content)
@@ -203,22 +197,9 @@ public:
 		mail.print(out);
 		return out;
 	}
-	inline bool isOpen() const
-	{
-		return isopen;
-	}
-	inline void openFile()
-	{
-		isopen = true;
-	}
-	inline void closeFile()
-	{
-		isopen = false;
-	}
-	inline int ContentLength() const
-	{
-		return charcount;
-	}
+	int charcount;
+	bool isopen;
+	int MessageID;
 
 private:
 	struct Datetime
@@ -242,20 +223,17 @@ private:
 	};
 	Datetime datetime;
 	std::string from, to;
-	int MessageID;
 	std::string path;
 	std::set<std::string> content;
-	int charcount;
-	bool isopen;
 };
 template <>
 struct std::less<Mail *>
 {
 	bool operator()(const Mail *x, const Mail *y)
 	{
-		if (x->ContentLength() == y->ContentLength())
-			return x->ID() < y->ID();
-		return x->ContentLength() < y->ContentLength();
+		if (x->charcount == y->charcount)
+			return x->MessageID < y->MessageID;
+		return x->charcount < y->charcount;
 	}
 };
 class Mails
@@ -272,14 +250,14 @@ public:
 		auto it = maildata_path.find(path);
 		if (it != maildata_path.end())
 		{
-			if (it->second.isOpen())
+			if (it->second.isopen)
 			{
 				out << "-\n";
 				return;
 			}
 			else
 			{
-				it->second.openFile();
+				it->second.isopen = true;
 				maildata_heap.push(&it->second);
 				out << ++count << '\n';
 				return;
@@ -289,7 +267,7 @@ public:
 		{
 			Mail mail(path);
 			maildata_path[path] = mail;
-			maildata_ID[mail.ID()] = &maildata_path[path];
+			maildata_ID[mail.MessageID] = &maildata_path[path];
 			maildata_heap.push(&maildata_path[path]);
 			out << ++count << '\n';
 		}
@@ -297,12 +275,12 @@ public:
 	void remove(const int &id, std::ostream &out = std::cout)
 	{
 		auto it = maildata_ID.find(id);
-		if (it == maildata_ID.end() || !it->second->isOpen())
+		if (it == maildata_ID.end() || !it->second->isopen)
 		{
 			out << "-\n";
 			return;
 		}
-		it->second->closeFile();
+		it->second->isopen = false;
 		maildata_heap.pop();
 		out << --count << '\n';
 	}
@@ -320,26 +298,27 @@ public:
 		return;
 		std::string from, to;
 		long long start_time, end_time;
-		for (auto it = commands.begin() + 1; it < commands.end(); ++it)
+		std::string::const_iterator start;
+		for (auto it = commands.cbegin() + 1; it < commands.cend(); ++it)
 		{
-			if (*it == '-')
+			if (*(it++) == '-')
 			{
-				switch (*(++it))
+				switch (*it)
 				{
 				case 'f':
-					auto start = ++it;
+					start = ++it;
 					while (*(++it) != '\"')
 						;
 					from = std::string(start + 1, it - 1);
 					break;
 				case 't':
-					auto start = ++it;
+					start = ++it;
 					while (*(++it) != '\"')
 						;
 					to = std::string(start + 1, it - 1);
 					break;
 				case 'd':
-					auto start = ++it;
+					start = ++it;
 					while (it < commands.end() && *it != ' ')
 						++it;
 					sscanf(std::string(start, it - 1).c_str(), "%lld~%lld", &start_time, &end_time);
@@ -361,18 +340,18 @@ public:
 	{
 		if (count == 0)
 		{
-			std::cout << "-\n";
+			out << "-\n";
 			return;
 		}
-		out << maildata_heap.top()->ID() << ' '
-			<< maildata_heap.top()->ContentLength() << '\n';
+		out << maildata_heap.top()->MessageID << ' '
+			<< maildata_heap.top()->charcount << '\n';
 	}
 
 private:
 	int count;
 	std::unordered_map<std::string, Mail> maildata_path;
 	std::unordered_map<int, Mail *> maildata_ID;
-	std::priority_queue<Mail *, std::vector<Mail *>> maildata_heap;
+	std::priority_queue<Mail *> maildata_heap;
 };
 
 #endif
