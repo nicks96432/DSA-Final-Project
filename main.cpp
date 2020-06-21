@@ -18,7 +18,6 @@ struct Mail {
 	string from;
 	int date;
 	int ID;
-	string subject;
 	string to;
 	unordered_set<string> words;
 	int count;
@@ -38,7 +37,6 @@ bool compare(const Mail *a, const Mail *b) {
 	return a->ID < b->ID;
 }
 struct Token {
-	bool isnum() { return type == 1; };
 	int type;
 	string expression;
 	int op;
@@ -48,7 +46,7 @@ struct Token {
 	Token(Token const &b): type(b.type), expression(b.expression), op(b.op) {};
 	Token operator=(Token const &a) { Token b(a); return b; }
 };
-unordered_set<string> paths; // read before?
+// unordered_set<string> paths; // read before?
 int N; // # of mails
 unordered_set<string> added; // valid
 unordered_map<int, string> ID2path;
@@ -70,7 +68,8 @@ inline int tolower(char c) {
 	return c;
 }
 inline void sTolower(string &s) {
-	for (int i = 0; i < s.size(); i++)
+	int length = s.length();
+	for (int i = 0; i < length; i++)
 		s[i] = tolower(s[i]);
 }
 int which_month(string &month, int index) {
@@ -138,8 +137,8 @@ int epoch(string &line) {
 void add() {
 	string path;
 	cin >> path;
-	if (paths.find(path) == paths.end()) {
-		paths.insert(path);
+	if (added.find(path) == added.end()) {
+		added.insert(path);
 		Mail *current = new Mail;
 		current->path = path;
 		ifstream fin;
@@ -156,7 +155,7 @@ void add() {
 		for (int i = 12; i < length; i++)
 			current->ID = current->ID * 10 + (line[i] - '0');
 		getline(fin, line);
-		length = line.size();
+		length = line.length();
 		for (int i = 9; i < length;) {
 			while (i < length && !isalnum(line[i]))
 				i++;
@@ -184,20 +183,17 @@ void add() {
 				i++;
 			}
 			// cout << temp << endl;
-			current->count += temp.size();
+			current->count += temp.length();
 			current->words.insert(temp);
 		}
 		ID2path[current->ID] = path;
 		from2Mail[current->from].push_back(current);
 		to2Mail[current->to].push_back(current);
 		path2Mail[path] = current;
-		count2Mail[current->count].insert(current);
 		date2Mail[current->date].insert(current);
+		count2Mail[current->count].insert(current);
 		fin.close();
-	} 
-	if (added.find(path) == added.end()) {
 		N++;
-		added.insert(path);
 		printf("%d\n", N);
 	} else 
 		printf("-\n");
@@ -216,10 +212,10 @@ void remove() {
 		string from = ptr->from;
 		int date = ptr->date;
 		int count = ptr->count;
-		vitr = lower_bound(from2Mail[from].begin(), from2Mail[from].end(), ptr);
+		vitr = find(from2Mail[from].begin(), from2Mail[from].end(), ptr);
 		// vitr = from2Mail[from].find(ptr);
 		from2Mail[from].erase(vitr);
-		vitr = lower_bound(to2Mail[to].begin(), to2Mail[to].end(), ptr);
+		vitr = find(to2Mail[to].begin(), to2Mail[to].end(), ptr);
 		// vitr = to2Mail[to].find(ptr);
 		to2Mail[to].erase(vitr);
 		date2Mail[date].erase(ptr);
@@ -227,10 +223,18 @@ void remove() {
 	} else 
 		printf("-\n");
 }
-
 void longest() {
-	if (N != 0)
-		cout << (*((*(count2Mail.begin())).second.begin()))->ID << " " << (*((*(count2Mail.begin())).second.begin()))->count << '\n';
+	if (N != 0) {
+		map<int, set<Mail *, cmpByID >, cmpByCount>::iterator a;
+		set<Mail *, cmpByID >::iterator b;
+		bool ok = false;
+		for (a = count2Mail.begin(); a != count2Mail.end() && !ok; a++)
+			for (b = a->second.begin(); b != a->second.end() && !ok; b++)
+				if (added.find((*b)->path) != added.end()) {
+					cout << (*b)->ID << " " << (*b)->count << '\n';
+					ok = true;
+				}
+	}
 	else
 		printf("-\n");
 }
@@ -246,7 +250,7 @@ void query() {
 		if (s[0] != '-') {
 			stack<Token> operators;
 			vector<Token> postfix;
-			int length = s.size();
+			int length = s.length();
 			for (int i = 0; i < length;) {
 				if (isalnum(s[i])) {
 					Token current;
@@ -294,7 +298,7 @@ void query() {
 			/*for (int i = 0; i < postfix.size(); i++)
 				cout << postfix[i].type << " " << postfix[i].op << " " << postfix[i].expression << '\n';*/
 			if (!only) {
-				if (fromWho.size() != 0) {
+				if (fromWho.length() != 0) {
 					for (vitr = from2Mail[fromWho].begin(); vitr != from2Mail[fromWho].end(); vitr++) {
 						if ((*vitr)->date < dateStart || (*vitr)->date > dateEnd) 
 							continue;
