@@ -10,6 +10,7 @@
 #include <cassert>
 #include <unordered_set>
 #include <unordered_map>
+#include <algorithm>
 using namespace std;
 
 struct Mail {
@@ -33,6 +34,9 @@ struct cmpByCount {
         return a > b;
     }
 };
+bool compare(const Mail *a, const Mail *b) {
+	return a->ID < b->ID;
+}
 struct Token {
 	bool isnum() { return type == 1; };
 	int type;
@@ -65,18 +69,9 @@ inline int tolower(char c) {
 		return c - 'A' + 'a';
 	return c;
 }
-int nepoch(string &s) {
-	int total = 0;
-	int year = (s[2] - '0') * 10 + (s[3] - '0'); // year
-	total += (year - 9) * 525600;
-	int month = (s[4] - '0') * 10 + (s[5] - '0');
-	total += month * 46080; // month 
-	total += s[6] * 14400 + s[7] * 1440; // day (minute)
-	int hour = (s[8] - '0') * 10 + (s[9] - '0'); // hour
-	total += hour * 60;
-	int minute = (s[10] - '0') * 10 + (s[11] - '0');
-	total += minute;
-	return total;
+inline void sTolower(string &s) {
+	for (int i = 0; i < s.size(); i++)
+		s[i] = tolower(s[i]);
 }
 int which_month(string &month, int index) {
 	switch (month[index]) {
@@ -109,15 +104,28 @@ int which_month(string &month, int index) {
 			return 12;
 	}
 }
+int nepoch(string &s) {
+	int total = 0;
+	int year = (s[2] - '0') * 10 + (s[3] - '0'); // year
+	total += (year - 9) * 525600;
+	int month = (s[4] - '0') * 10 + (s[5] - '0');
+	total += month * 46080; // month 
+	total += (s[6] - '0') * 14400 + (s[7] - '0') * 1440; // day (minute)
+	int hour = (s[8] - '0') * 10 + (s[9] - '0'); // hour
+	total += hour * 60;
+	int minute = (s[10] - '0') * 10 + (s[11] - '0');
+	total += minute;
+	return total;
+}
 int epoch(string &line) {
 	int total = 0;
 	int index = line.rfind(':');
 	if (line[7] != ' ') {
 		total += which_month(line, 9) * 46080; // month 
-		total += line[6] * 14400 + line[7] * 1440; // day (minute)
+		total += (line[6] - '0') * 14400 + (line[7] - '0') * 1440; // day (minute)
 	} else {
 		total += which_month(line, 8) * 46080; // month 
-		total += line[6] * 1440; // day (minute)
+		total += (line[6] - '0') * 1440; // day (minute)
 	}
 	int year = (line[index - 8] - '0') * 10 + (line[index - 7] - '0'); // year
 	total += (year - 9) * 525600;
@@ -139,6 +147,7 @@ void add() {
 		fin.open(path, ifstream::in);
 		getline(fin, current->from);
 		current->from.erase(0, 6);
+		sTolower(current->from);
 		getline(fin, line);
 		current->date = epoch(line);
 		getline(fin, line);
@@ -147,24 +156,26 @@ void add() {
 		for (int i = 12; i < length; i++)
 			current->ID = current->ID * 10 + (line[i] - '0');
 		getline(fin, line);
-		for (int i = 9; i < length; i++) {
+		length = line.size();
+		for (int i = 9; i < length;) {
 			while (i < length && !isalnum(line[i]))
 				i++;
 			string temp;
 			while (i < length && isalnum(line[i])) {
-				temp += tolower(line[i]);
+				temp.push_back(tolower(line[i]));
 				i++;
 			}
 			current->words.insert(temp);
 		}
 		getline(fin, current->to);
 		current->to.erase(0, 4);
+		sTolower(current->to);
 		getline(fin, line);
 
 		getline(fin, line, '\0');
 		length = line.length();
 		// cout << length << endl;
-		for (int i = 0; i < length; i++) {
+		for (int i = 0; i < length;) {
 			while (i < length && !isalnum(line[i]))
 				i++;
 			string temp;
@@ -176,8 +187,6 @@ void add() {
 			current->count += temp.size();
 			current->words.insert(temp);
 		}
-		
-
 		ID2path[current->ID] = path;
 		from2Mail[current->from].push_back(current);
 		to2Mail[current->to].push_back(current);
@@ -229,8 +238,9 @@ void longest() {
 void query() {
 	string s;
 	set<Mail *, cmpByID> answer;
-	set<Mail *>::iterator itr;
 	bool only = true;
+	string fromWho, toWho; 
+	int dateStart = INT_MIN, dateEnd = INT_MAX;
 	while (cin >> s) {
 		// cout << s << endl;
 		if (s[0] != '-') {
@@ -284,37 +294,109 @@ void query() {
 			/*for (int i = 0; i < postfix.size(); i++)
 				cout << postfix[i].type << " " << postfix[i].op << " " << postfix[i].expression << '\n';*/
 			if (!only) {
-				for (itr = answer.begin(); itr != answer.end();) {
-					vector<bool> check;
-					int length = postfix.size();
-					for (int i = 0; i < length; i++) {
-						if (postfix[i].type == 1) {
-							if ((*itr)->words.find(postfix[i].expression) != (*itr)->words.end())
-								check.push_back(true);
-							else 
-								check.push_back(false);
-						} else {
-							int back = check.size() - 1;
-							// cout << back << endl;
-							if (postfix[i].op == 2) 
-								check[back] = !check[back];
-							else if (postfix[i].op == 3) {
-								// cout << check[back] << " " << check[back - 1] << endl;
-								check[back - 1] = (check[back] & check[back - 1]);
-								// cout << check[back - 1] << endl;
-								check.pop_back();
+				if (fromWho.size() != 0) {
+					for (vitr = from2Mail[fromWho].begin(); vitr != from2Mail[fromWho].end(); vitr++) {
+						if ((*vitr)->date < dateStart || (*vitr)->date > dateEnd) 
+							continue;
+						if (toWho.size() != 0 && (*vitr)->to != toWho)
+							continue;
+						vector<bool> check;
+						int length = postfix.size();
+						for (int i = 0; i < length; i++) {
+							if (postfix[i].type == 1) {
+								if ((*vitr)->words.find(postfix[i].expression) != (*vitr)->words.end())
+									check.push_back(true);
+								else 
+									check.push_back(false);
 							} else {
-								check[back - 1] = (check[back] | check[back - 1]);
-								check.pop_back();
+								int back = check.size() - 1;
+								// cout << back << endl;
+								if (postfix[i].op == 2) 
+									check[back] = !check[back];
+								else if (postfix[i].op == 3) {
+									// cout << check[back] << " " << check[back - 1] << endl;
+									check[back - 1] = (check[back] && check[back - 1]);
+									// cout << check[back - 1] << endl;
+									check.pop_back();
+								} else {
+									check[back - 1] = (check[back] || check[back - 1]);
+									check.pop_back();
+								}
 							}
 						}
+						assert(check.size() == 1);
+						if (check[0] == true)
+							answer.insert(*vitr);
 					}
-					assert(check.size() == 1);
-					if (check[0] == false) {
-						answer.erase(*(itr++));
-					} else 
-						itr++;
-				}		
+				}
+				else if (toWho.size() != 0) {
+					for (vitr = to2Mail[toWho].begin(); vitr != to2Mail[toWho].end(); vitr++) {
+						if ((*vitr)->date < dateStart || (*vitr)->date > dateEnd) 
+							continue;
+						vector<bool> check;
+						int length = postfix.size();
+						for (int i = 0; i < length; i++) {
+							if (postfix[i].type == 1) {
+								if ((*vitr)->words.find(postfix[i].expression) != (*vitr)->words.end())
+									check.push_back(true);
+								else 
+									check.push_back(false);
+							} else {
+								int back = check.size() - 1;
+								// cout << back << endl;
+								if (postfix[i].op == 2) 
+									check[back] = !check[back];
+								else if (postfix[i].op == 3) {
+									// cout << check[back] << " " << check[back - 1] << endl;
+									check[back - 1] = (check[back] && check[back - 1]);
+									// cout << check[back - 1] << endl;
+									check.pop_back();
+								} else {
+									check[back - 1] = (check[back] || check[back - 1]);
+									check.pop_back();
+								}
+							}
+						}
+						assert(check.size() == 1);
+						if (check[0] == true)
+							answer.insert(*vitr);
+					}
+				} else {
+					for (sitr = date2Mail.lower_bound(dateStart); sitr != date2Mail.end(); sitr++) {
+						if ((*(sitr->second.begin()))->date >= dateStart && (*(sitr->second.begin()))->date <= dateEnd) 
+							for (ssitr = (*sitr).second.begin(); ssitr != (*sitr).second.end(); ssitr++) {
+								vector<bool> check;
+								int length = postfix.size();
+								for (int i = 0; i < length; i++) {
+									if (postfix[i].type == 1) {
+										if ((*ssitr)->words.find(postfix[i].expression) != (*ssitr)->words.end())
+											check.push_back(true);
+										else 
+											check.push_back(false);
+									} else {
+										int back = check.size() - 1;
+										// cout << back << endl;
+										if (postfix[i].op == 2) 
+											check[back] = !check[back];
+										else if (postfix[i].op == 3) {
+											// cout << check[back] << " " << check[back - 1] << endl;
+											check[back - 1] = (check[back] & check[back - 1]);
+											// cout << check[back - 1] << endl;
+											check.pop_back();
+										} else {
+											check[back - 1] = (check[back] | check[back - 1]);
+											check.pop_back();
+										}
+									}
+								}
+								assert(check.size() == 1);
+								if (check[0] == true)
+									answer.insert(*ssitr);
+							}
+						else
+							break;
+					}
+				}
 			} else {
 				unordered_set<string>::iterator itr;
 				for (itr = added.begin(); itr != added.end(); itr++) {
@@ -342,80 +424,70 @@ void query() {
 					}
 					assert(check.size() == 1);
 					if (check[0])
-						answer.insert(path2Mail[*itr]);
+						answer.insert(here);
 				}
 			}
 			break;
 		} else if (s[1] == 'f') {
 			s.erase(0, 3);
 			s.pop_back();
-			for (itr = answer.begin(); itr != answer.end();) {
-				if ((*itr)->from != s)
-					answer.erase(*(itr++));
-				else
-					itr++;
-			}
+			sTolower(s);
+			fromWho = s;
+			/*for (int i = answer.size() - 1; i >= 0; i--)
+				if (answer[i]->from != s)
+					answer.erase(answer.begin() + i);
 			for (vitr = from2Mail[s].begin(); vitr != from2Mail[s].end(); vitr++)
-				answer.insert(*vitr);
+				answer.push_back(*vitr);*/
 			only = false;
-			cout << "f: " << answer.size() << endl;
 		} else if (s[1] == 't') {
 			s.erase(0, 3);
 			s.pop_back();
-			for (itr = answer.begin(); itr != answer.end();) {
-				if ((*itr)->to != s)
-					answer.erase(*(itr++));
-				else
-					itr++;
-			}
-			cout << "size of to2mail[s]:" << to2Mail[s].size() << endl;
-			for (vitr = to2Mail[s].begin(); vitr != to2Mail[s].end(); vitr++) 
-				answer.insert(*vitr);
+			sTolower(s);
+			toWho = s;
+			/*for (int i = answer.size() - 1; i >= 0; i--)
+				if (answer[i]->to != s)
+					answer.erase(answer.begin() + i);
+			for (vitr = to2Mail[s].begin(); vitr != to2Mail[s].end(); vitr++)
+				answer.push_back(*vitr);*/
 			only = false;
-			cout << "t: " << answer.size() << endl;
 		} else if (s[1] == 'd') {
 			s.erase(0, 2);
 			int index = s.find('~');
 			// cout << index << endl;
-			int start = INT_MIN;
-			int end = INT_MAX;
 			if (index == 0 && s.length() != 1) {
 				s.erase(0, 1);
-				end = nepoch(s);
+				dateEnd = nepoch(s);
 			} else if (index == 12) {
-				start = nepoch(s);
+				dateStart = nepoch(s);
 				s.erase(0, 13);
 				if (s.length() != 0) 
-					end = nepoch(s);
+					dateEnd = nepoch(s);
 			}
-			// cout << start << " " << end << endl;
-			for (itr = answer.begin(); itr != answer.end();) {
-				if ((*itr)->date < start || (*itr)->date > end) 
-					answer.erase(*(itr++));
-				else
-					itr++;
-			}
+			/*for (int i = answer.size() - 1; i >= 0; i--)
+				if (answer[i]->date < start || answer[i]->date > end) 
+					answer.erase(answer.begin() + i);
 			for (sitr = date2Mail.lower_bound(start); sitr != date2Mail.end(); sitr++) {
 				if ((*(sitr->second.begin()))->date >= start && (*(sitr->second.begin()))->date <= end) 
 					for (ssitr = (*sitr).second.begin(); ssitr != (*sitr).second.end(); ssitr++)
-						answer.insert(*ssitr);
+						answer.push_back(*ssitr);
 				else
 					break;
-			}
+			}*/
 			only = false;
 		}
 	}
 	bool start = true;
-	// cout << "size: " << answer.size() << endl;
 	// cout << "size: " << added.size() << endl;
-	for (itr = answer.begin(); itr != answer.end(); itr++)
-		if (added.find((*itr)->path) != added.end()) {
+	set<Mail *, cmpByID>::iterator ttr;
+	for (ttr = answer.begin(); ttr != answer.end(); ttr++) {
+		if (added.find((*ttr)->path) != added.end()) {
 			if (start)
 				start = false;
 			else
 				printf(" ");
-			printf("%d", (*itr)->ID);
+			printf("%d", (*ttr)->ID);
 		}
+	}
 	if (start)
 		printf("-\n");
 	else 
