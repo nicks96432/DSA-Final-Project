@@ -2,7 +2,6 @@
 #include <map>
 #include <set>
 #include <stack>
-#include <queue>
 #include <vector>
 #include <string>
 #include <fstream>
@@ -50,10 +49,10 @@ struct Token {
 int N; // # of mails
 unordered_set<string> added; // valid
 unordered_map<int, string> ID2path;
-unordered_map<string, vector<Mail *> > from2Mail;
-unordered_map<string, vector<Mail *> > to2Mail;
-unordered_map<string, Mail * > path2Mail;
+unordered_map<string, unordered_set<Mail *> > from2Mail;
+unordered_map<string, unordered_set<Mail *> > to2Mail;
 map<int, set<Mail *, cmpByID > > date2Mail;
+unordered_map<string, Mail * > path2Mail;
 map<int, set<Mail *, cmpByID >, cmpByCount> count2Mail;
 vector<Mail *>::iterator vitr;
 map<int, set<Mail *, cmpByID > >::iterator sitr;
@@ -164,7 +163,9 @@ void add() {
 				temp.push_back(tolower(line[i]));
 				i++;
 			}
-			current->words.insert(temp);
+			// cout << temp << endl;
+			if (temp.length() != 0)
+				current->words.insert(temp);
 		}
 		getline(fin, current->to);
 		current->to.erase(0, 4);
@@ -184,11 +185,12 @@ void add() {
 			}
 			// cout << temp << endl;
 			current->count += temp.length();
-			current->words.insert(temp);
+			if (temp.length() != 0)
+				current->words.insert(temp);
 		}
 		ID2path[current->ID] = path;
-		from2Mail[current->from].push_back(current);
-		to2Mail[current->to].push_back(current);
+		from2Mail[current->from].insert(current);
+		to2Mail[current->to].insert(current);
 		path2Mail[path] = current;
 		date2Mail[current->date].insert(current);
 		count2Mail[current->count].insert(current);
@@ -212,12 +214,12 @@ void remove() {
 		string from = ptr->from;
 		int date = ptr->date;
 		int count = ptr->count;
-		vitr = find(from2Mail[from].begin(), from2Mail[from].end(), ptr);
+		// vitr = find(from2Mail[from].begin(), from2Mail[from].end(), ptr);
 		// vitr = from2Mail[from].find(ptr);
-		from2Mail[from].erase(vitr);
-		vitr = find(to2Mail[to].begin(), to2Mail[to].end(), ptr);
+		from2Mail[from].erase(ptr);
+		// vitr = find(to2Mail[to].begin(), to2Mail[to].end(), ptr);
 		// vitr = to2Mail[to].find(ptr);
-		to2Mail[to].erase(vitr);
+		to2Mail[to].erase(ptr);
 		date2Mail[date].erase(ptr);
 		count2Mail[count].erase(ptr);
 	} else 
@@ -234,6 +236,8 @@ void longest() {
 					cout << (*b)->ID << " " << (*b)->count << '\n';
 					ok = true;
 				}
+		if (!ok)
+			printf("-\n");
 	}
 	else
 		printf("-\n");
@@ -241,7 +245,7 @@ void longest() {
 
 void query() {
 	string s;
-	set<Mail *, cmpByID> answer;
+	set<int> answer;
 	bool only = true;
 	string fromWho, toWho; 
 	int dateStart = INT_MIN, dateEnd = INT_MAX;
@@ -299,25 +303,27 @@ void query() {
 				cout << postfix[i].type << " " << postfix[i].op << " " << postfix[i].expression << '\n';*/
 			if (!only) {
 				if (fromWho.length() != 0) {
-					for (vitr = from2Mail[fromWho].begin(); vitr != from2Mail[fromWho].end(); vitr++) {
-						if ((*vitr)->date < dateStart || (*vitr)->date > dateEnd) 
+					unordered_set<Mail *>::iterator tr;
+					for (tr = from2Mail[fromWho].begin(); tr != from2Mail[fromWho].end(); tr++) {
+						Mail *ptr = *tr;
+						if (ptr->date < dateStart || ptr->date > dateEnd) 
 							continue;
-						if (toWho.size() != 0 && (*vitr)->to != toWho)
+						if (toWho.size() != 0 && ptr->to != toWho)
 							continue;
 						vector<bool> check;
 						int length = postfix.size();
-						for (int i = 0; i < length; i++) {
-							if (postfix[i].type == 1) {
-								if ((*vitr)->words.find(postfix[i].expression) != (*vitr)->words.end())
+						for (int j = 0; j < length; j++) {
+							if (postfix[j].type == 1) {
+								if (ptr->words.find(postfix[j].expression) != ptr->words.end())
 									check.push_back(true);
 								else 
 									check.push_back(false);
 							} else {
 								int back = check.size() - 1;
 								// cout << back << endl;
-								if (postfix[i].op == 2) 
+								if (postfix[j].op == 2) 
 									check[back] = !check[back];
-								else if (postfix[i].op == 3) {
+								else if (postfix[j].op == 3) {
 									// cout << check[back] << " " << check[back - 1] << endl;
 									check[back - 1] = (check[back] && check[back - 1]);
 									// cout << check[back - 1] << endl;
@@ -330,27 +336,29 @@ void query() {
 						}
 						assert(check.size() == 1);
 						if (check[0] == true)
-							answer.insert(*vitr);
+							answer.insert(ptr->ID);
 					}
 				}
-				else if (toWho.size() != 0) {
-					for (vitr = to2Mail[toWho].begin(); vitr != to2Mail[toWho].end(); vitr++) {
-						if ((*vitr)->date < dateStart || (*vitr)->date > dateEnd) 
+				else if (toWho.length() != 0) {
+					unordered_set<Mail *>::iterator tr;
+					for (tr = to2Mail[toWho].begin(); tr != to2Mail[toWho].end(); tr++) {
+						Mail *ptr = *tr;
+						if (ptr->date < dateStart || ptr->date > dateEnd) 
 							continue;
 						vector<bool> check;
 						int length = postfix.size();
-						for (int i = 0; i < length; i++) {
-							if (postfix[i].type == 1) {
-								if ((*vitr)->words.find(postfix[i].expression) != (*vitr)->words.end())
+						for (int j = 0; j < length; j++) {
+							if (postfix[j].type == 1) {
+								if (ptr->words.find(postfix[j].expression) != ptr->words.end())
 									check.push_back(true);
 								else 
 									check.push_back(false);
 							} else {
 								int back = check.size() - 1;
 								// cout << back << endl;
-								if (postfix[i].op == 2) 
+								if (postfix[j].op == 2) 
 									check[back] = !check[back];
-								else if (postfix[i].op == 3) {
+								else if (postfix[j].op == 3) {
 									// cout << check[back] << " " << check[back - 1] << endl;
 									check[back - 1] = (check[back] && check[back - 1]);
 									// cout << check[back - 1] << endl;
@@ -363,7 +371,7 @@ void query() {
 						}
 						assert(check.size() == 1);
 						if (check[0] == true)
-							answer.insert(*vitr);
+							answer.insert(ptr->ID);
 					}
 				} else {
 					for (sitr = date2Mail.lower_bound(dateStart); sitr != date2Mail.end(); sitr++) {
@@ -384,18 +392,18 @@ void query() {
 											check[back] = !check[back];
 										else if (postfix[i].op == 3) {
 											// cout << check[back] << " " << check[back - 1] << endl;
-											check[back - 1] = (check[back] & check[back - 1]);
+											check[back - 1] = (check[back] && check[back - 1]);
 											// cout << check[back - 1] << endl;
 											check.pop_back();
 										} else {
-											check[back - 1] = (check[back] | check[back - 1]);
+											check[back - 1] = (check[back] || check[back - 1]);
 											check.pop_back();
 										}
 									}
 								}
 								assert(check.size() == 1);
 								if (check[0] == true)
-									answer.insert(*ssitr);
+									answer.insert((*ssitr)->ID);
 							}
 						else
 							break;
@@ -411,24 +419,28 @@ void query() {
 					vector<bool> check;
 					int length = postfix.size();
 					for (int i = 0; i < length; i++) {
-						if (postfix[i].type == 1)
-							check.push_back((here->words.find(postfix[i].expression) != here->words.end()));
+						if (postfix[i].type == 1) {
+							if (here->words.find(postfix[i].expression) != here->words.end())
+								check.push_back(true);
+							else
+								check.push_back(false);
+						}
 						else {
 							int back = check.size() - 1;
 							if (postfix[i].op == 2) 
 								check[back] = !check[back];
 							else if (postfix[i].op == 3) {
-								check[back - 1] = (check[back] & check[back - 1]);
+								check[back - 1] = (check[back] && check[back - 1]);
 								check.pop_back();
 							} else {
-								check[back - 1] = (check[back] | check[back - 1]);
+								check[back - 1] = (check[back] || check[back - 1]);
 								check.pop_back();
 							}
 						}
 					}
 					assert(check.size() == 1);
 					if (check[0])
-						answer.insert(here);
+						answer.insert(here->ID);
 				}
 			}
 			break;
@@ -482,14 +494,14 @@ void query() {
 	}
 	bool start = true;
 	// cout << "size: " << added.size() << endl;
-	set<Mail *, cmpByID>::iterator ttr;
+	set<int>::iterator ttr;
 	for (ttr = answer.begin(); ttr != answer.end(); ttr++) {
-		if (added.find((*ttr)->path) != added.end()) {
+		if (added.find(ID2path[*ttr]) != added.end()) {
 			if (start)
 				start = false;
 			else
 				printf(" ");
-			printf("%d", (*ttr)->ID);
+			printf("%d", *ttr);
 		}
 	}
 	if (start)
