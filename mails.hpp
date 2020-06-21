@@ -6,7 +6,6 @@
 
 #include <set>
 #include <map>
-#include <queue>
 #include <vector>
 #include <string>
 #include <sstream>
@@ -38,22 +37,19 @@ inline void string_lower(std::string &str)
 	for (auto &it : str)
 		if (std::isupper(it))
 			it = std::tolower(it);
-	return;
 }
 /* 信件格式範例
  * From: Tim
  * Date: 19 May 2011 at 16:50
  * Message-ID: 1
- * Subject: Minas-Rio 
+ * Subject: blah-blah
  * To: Tony
  * Content:
- * Minas-Rio is an iron ore mining project in Brazil.[1] It is one of the world's largest mining projects, and is initially expected to export 26.5 million tonnes of iron ore in 2013, through a 525km slurry pipeline to a port at Au;[2] production potential is 53 Mtpa or higher.[3] The project was bought by Anglo American PLC, which is facing high costs.[4][5] The mine has certified reserves of 4.6 billion tonnes of itabirite.[6] There have been delays in starting the project, but in December 2010, Anglo American obtained a key license needed from Brazilian government before mining could start.[7][8] 
- * I read the paragraph on http://wikipedia.org
+ * blah
+ * blah-blah
  */
 class Mail
 {
-	friend class Mails;
-
 public:
 	Mail()
 	{
@@ -67,14 +63,17 @@ public:
 			throw std::runtime_error(p + ": No such file or directory.");
 		file.sync_with_stdio(false);
 		file.tie(NULL);
+		from.reserve(1000);
+		to.reserve(1000);
 		path = p;
 		isopen = true;
-		std::string tmp(50, '\0');
+		std::string tmp;
+		tmp.reserve(100000);
 		// From from
 		std::getline(file, tmp);
 		from = &tmp.at(6);
 		string_lower(from);
-		// Date day
+		// Date
 		std::getline(file, tmp);
 		auto it_str = tmp.begin() + 6;
 		for (; it_str < tmp.end(); ++it_str)
@@ -242,8 +241,8 @@ public:
 	Mails()
 	{
 		count = 0;
-		maildata_ID.reserve(10000);
-		maildata_path.reserve(10000);
+		maildata_ID.reserve(100000);
+		maildata_path.reserve(100000);
 	}
 	void add(const std::string &path, std::ostream &out = std::cout)
 	{
@@ -258,7 +257,7 @@ public:
 			else
 			{
 				it->second.isopen = true;
-				maildata_heap.push(&it->second);
+				maildata_heap.insert(&it->second);
 				out << ++count << '\n';
 				return;
 			}
@@ -267,8 +266,8 @@ public:
 		{
 			Mail mail(path);
 			maildata_path[path] = mail;
-			maildata_ID[mail.MessageID] = &maildata_path[path];
-			maildata_heap.push(&maildata_path[path]);
+			maildata_ID.insert(std::pair<int, Mail *const>(mail.MessageID, &maildata_path[path]));
+			maildata_heap.insert(&maildata_path[path]);
 			out << ++count << '\n';
 		}
 	}
@@ -281,47 +280,69 @@ public:
 			return;
 		}
 		it->second->isopen = false;
-		maildata_heap.pop();
 		out << --count << '\n';
 	}
-	/* -f <from>
+	/* 
+	 * -f <from>
 	 * -t <to>
 	 * -d <date>~<date>
 	 * <expression>:<keyword> or (<expression>) or !<expression>
 	 * or <expression>|<expression> or <expression>&<expression>
-	 * 
-	 * 
 	 */
 	void query(const std::string &commands, std::ostream &out = std::cout)
 	{
-		std::cout << commands << '\n';
-		return;
-		std::string from, to;
-		long long start_time, end_time;
+		for (int i = 0; i < 3; i++)
+		{
+			if (answers[i].command == commands)
+			{
+				auto it = answers[i].answer.cbegin();
+				for (; it != answers[i].answer.cend() - 1; ++it)
+					cout << *it << ' ';
+				cout << *it;
+				return;
+			}
+		}
+		std::string from, to, expression;
 		std::string::const_iterator start;
+		long long start_time, end_time;
 		for (auto it = commands.cbegin() + 1; it < commands.cend(); ++it)
 		{
-			if (*(it++) == '-')
+			if (*it == ' ')
+				continue;
+			else if (*it == '-')
 			{
+				++it;
 				switch (*it)
 				{
 				case 'f':
-					start = ++it;
-					while (*(++it) != '\"')
-						;
-					from = std::string(start + 1, it - 1);
+					it += 2;
+					start = it;
+					while (*it != '\"')
+						++it;
+					from = std::string(start, it);
 					break;
 				case 't':
-					start = ++it;
-					while (*(++it) != '\"')
-						;
-					to = std::string(start + 1, it - 1);
+					it += 2;
+					start = it;
+					while (*it != '\"')
+						++it;
+					to = std::string(start, it);
 					break;
 				case 'd':
 					start = ++it;
+					while (it < commands.end() && *it != '~')
+						++it;
+					if (start == it)
+						start_time = 0;
+					else
+						start_time = std::stoll(std::string(start, it));
+					start = ++it;
 					while (it < commands.end() && *it != ' ')
 						++it;
-					sscanf(std::string(start, it - 1).c_str(), "%lld~%lld", &start_time, &end_time);
+					if (start == it)
+						end_time = 0x7FFFFFFFFFFFFFFFLL;
+					else
+						end_time = std::stoll(std::string(start, it));
 					break;
 				default:
 					throw std::out_of_range("unknown option: -" + *it);
@@ -330,10 +351,11 @@ public:
 			}
 			else
 			{
+				expression = std::string(it, commands.cend());
+				break;
 			}
 		}
-		out << commands << '\n';
-		out << "-\n";
+		parseExpression();
 		return;
 	}
 	void longest(std::ostream &out = std::cout) const
@@ -343,15 +365,31 @@ public:
 			out << "-\n";
 			return;
 		}
-		out << maildata_heap.top()->MessageID << ' '
-			<< maildata_heap.top()->charcount << '\n';
+		out << (*maildata_heap.crbegin())->MessageID << ' '
+			<< (*maildata_heap.crbegin())->charcount << '\n';
 	}
 
 private:
+	void parseExpression()
+	{
+	}
+	struct Answer
+	{
+		Answer()
+		{
+			answer.reserve(10000);
+			command.reserve(5000);
+			for (auto &it : answer)
+				it.reserve(5000);
+		}
+		std::vector<int> answer;
+		std::string command;
+	};
 	int count;
 	std::unordered_map<std::string, Mail> maildata_path;
-	std::unordered_map<int, Mail *> maildata_ID;
-	std::priority_queue<Mail *> maildata_heap;
+	std::unordered_map<int, Mail *const> maildata_ID;
+	std::set<Mail *, std::less<Mail *>> maildata_heap;
+	Answer answers[3];
 };
 
 #endif
