@@ -162,45 +162,6 @@ public:
 		}
 		file.close();
 	}
-#ifdef DEBUG
-	void print(std::ostream &out = std::cout) const
-	{
-		const std::string number_to_month[13] =
-			{
-				std::string(),
-				std::string("January"),
-				std::string("February"),
-				std::string("March"),
-				std::string("April"),
-				std::string("May"),
-				std::string("June"),
-				std::string("July"),
-				std::string("August"),
-				std::string("September"),
-				std::string("October"),
-				std::string("November"),
-				std::string("December")
-
-			};
-		out << "From: " << from << '\n';
-		out << "Date: " << datetime.day << ' '
-			<< number_to_month[datetime.month] << ' '
-			<< datetime.year << " at "
-			<< datetime.hour << ':'
-			<< datetime.minute << '\n';
-		out << "Message-ID: " << MessageID << '\n';
-		out << "Subject: ";
-		out << "\nTo: " << to << '\n';
-		out << "Content:\n";
-		for (const auto &str : content)
-			out << str << ' ';
-	}
-	friend std::ostream &operator<<(std::ostream &out, const Mail &mail)
-	{
-		mail.print(out);
-		return out;
-	}
-#endif
 private:
 	struct Datetime
 	{
@@ -548,24 +509,6 @@ private:
 		}
 		return postfix;
 	}
-#ifdef DEBUG
-	void printPostfix(const std::vector<std::string> &postfix, std::ostream &out = std::cout) const
-	{
-		std::vector<std::string>::const_iterator it;
-		for (it = postfix.cbegin(); it != postfix.cend(); ++it)
-		{
-			if ((*it) == "+u")
-				out << '+';
-			else if ((*it) == "-u")
-				out << '-';
-			else
-				out << (*it);
-			if (it != postfix.cend() - 1)
-				out << ' ';
-		}
-		return;
-	}
-#endif
 	struct less_charcount
 	{
 		bool operator()(const Mail *x, const Mail *y)

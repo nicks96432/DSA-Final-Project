@@ -2,9 +2,6 @@
 #include <fstream>
 #include <string>
 #include <unordered_set>
-#ifdef DEBUG
-#include <ctime>
-#endif
 #include "mails.hpp"
 using namespace std;
 int main(int argc, char const *argv[])
@@ -22,10 +19,6 @@ int main(int argc, char const *argv[])
 	Mails mails;
 	string command, path;
 	int id;
-#ifdef DEBUG
-	clock_t start = clock();
-	ofstream out("out", ios::out);
-#endif
 	while (cin >> command)
 	{
 		auto it = commands.find(command);
@@ -35,40 +28,20 @@ int main(int argc, char const *argv[])
 		{
 		case 'a':
 			cin >> path;
-#ifdef DEBUG
-			mails.add(path, out);
-#else
 			mails.add(path);
-#endif
 			break;
 		case 'r':
 			cin >> id;
-#ifdef DEBUG
-			mails.remove(id, out);
-#else
 			mails.remove(id);
-#endif
 			break;
 		case 'q':
 			getline(cin, path);
-#ifdef DEBUG
-			mails.query(path, out);
-#else
 			mails.query(path);
-#endif
 			break;
 		default: // longest
-#ifdef DEBUG
-			mails.longest(out);
-#else
 			mails.longest();
-#endif
 			break;
 		}
 	}
-#ifdef DEBUG
-	clock_t end = clock();
-	cout << "time elapsed: " << (double)(end - start) / CLOCKS_PER_SEC;
-#endif
 	return 0;
 }
