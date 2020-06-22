@@ -18,18 +18,18 @@
 // 月份對應表
 static const std::unordered_map<std::string, int> month_to_number =
 	{
-		{"January", 0},
-		{"February", 1},
-		{"March", 2},
-		{"April", 3},
-		{"May", 4},
-		{"June", 5},
-		{"July", 6},
-		{"August", 7},
-		{"September", 8},
-		{"October", 9},
-		{"November", 10},
-		{"December", 11}
+		{"January", 1},
+		{"February", 2},
+		{"March", 3},
+		{"April", 4},
+		{"May", 5},
+		{"June", 6},
+		{"July", 7},
+		{"August", 8},
+		{"September", 9},
+		{"October", 10},
+		{"November", 11},
+		{"December", 12}
 
 };
 inline void string_lower(std::string &str)
@@ -51,7 +51,6 @@ inline void string_lower(std::string &str)
 class Mail
 {
 	friend class Mails;
-	friend struct std::less<Mail *>;
 
 public:
 	Mail()
@@ -65,7 +64,7 @@ public:
 		if (file.fail())
 			throw std::runtime_error(p + ": No such file or directory.");
 		file.sync_with_stdio(false);
-		file.tie(NULL);
+		file.tie(nullptr);
 		from.reserve(1000);
 		to.reserve(1000);
 		path = p;
@@ -166,8 +165,9 @@ public:
 #ifdef DEBUG
 	void print(std::ostream &out = std::cout) const
 	{
-		const std::string number_to_month[12] =
+		const std::string number_to_month[13] =
 			{
+				std::string(),
 				std::string("January"),
 				std::string("February"),
 				std::string("March"),
@@ -202,9 +202,6 @@ public:
 	}
 #endif
 private:
-	int charcount;
-	bool isopen;
-	int MessageID;
 	struct Datetime
 	{
 		Datetime()
@@ -224,20 +221,13 @@ private:
 		int year, month, day, hour, minute;
 		long long time_number;
 	};
+	int charcount;
+	bool isopen;
+	int MessageID;
 	Datetime datetime;
 	std::string from, to;
 	std::string path;
 	std::set<std::string> content;
-};
-template <>
-struct std::less<Mail *>
-{
-	bool operator()(const Mail *x, const Mail *y)
-	{
-		if (x->charcount == y->charcount)
-			return x->MessageID < y->MessageID;
-		return x->charcount < y->charcount;
-	}
 };
 class Mails
 {
@@ -245,7 +235,6 @@ public:
 	Mails()
 	{
 		count = 0;
-		maildata_ID.reserve(100000);
 		maildata_path.reserve(100000);
 	}
 	void add(const std::string &path, std::ostream &out = std::cout)
@@ -261,7 +250,8 @@ public:
 			else
 			{
 				it->second.isopen = true;
-				maildata_set.insert(&it->second);
+				maildata_longest.insert(&it->second);
+				maildata_ID.insert({it->second.MessageID, &it->second});
 				out << ++count << '\n';
 				return;
 			}
@@ -270,31 +260,25 @@ public:
 		{
 			Mail mail(path);
 			maildata_path[path] = mail;
-			maildata_ID.insert(std::pair<int, Mail *const>(mail.MessageID, &maildata_path[path]));
-			maildata_set.insert(&maildata_path[path]);
+			maildata_ID.insert({mail.MessageID, &maildata_path[path]});
+			maildata_longest.insert(&maildata_path[path]);
 			out << ++count << '\n';
 		}
 	}
 	void remove(const int &id, std::ostream &out = std::cout)
 	{
 		auto it = maildata_ID.find(id);
-		if (it == maildata_ID.end() || !it->second->isopen)
+		if (it == maildata_ID.end())
 		{
 			out << "-\n";
 			return;
 		}
 		it->second->isopen = false;
-		maildata_set.erase(maildata_ID.at(id));
+		maildata_longest.erase(maildata_ID.at(id));
+		maildata_ID.erase(id);
 		out << --count << '\n';
 	}
-	/* 
-	 * -f <from>
-	 * -t <to>
-	 * -d <date>~<date>
-	 * <expression>:<keyword> or (<expression>) or !<expression>
-	 * or <expression>|<expression> or <expression>&<expression>
-	 */
-	void query(const std::string &commands, std::ostream &out = std::cout)
+	void query(const std::string &commands, std::ostream &out = std::cout) const
 	{
 		std::string from, to, expression;
 		std::string::const_iterator start;
@@ -351,25 +335,24 @@ public:
 				break;
 			}
 		}
-		const std::vector<std::string> &postfix = to_postfix(expression);
-		std::vector<std::vector<int>> calculate;
-		calculate.reserve(10000);
 		std::vector<int> tmp;
 		if (from.empty() && to.empty() && start_time == 0LL && end_time == 0LL)
-			std::transform(maildata_set.cbegin(), maildata_set.cend(),
-						   std::inserter(tmp, tmp.end()), [](const auto *pair) -> int { return pair->MessageID; });
+		{
+			std::transform(maildata_ID.cbegin(), maildata_ID.cend(),
+						   std::inserter(tmp, tmp.end()), [](const auto &pair) -> int { return pair.first; });
+		}
 		else if (!from.empty())
 		{
-			for (const auto &it : maildata_set)
-				if (it->from == from)
-					tmp.push_back(it->MessageID);
+			for (const auto &it : maildata_ID)
+				if (it.second->from == from)
+					tmp.push_back(it.first);
 		}
 		if (!to.empty())
 		{
 			std::vector<int> tmp2;
-			for (const auto &it : maildata_set)
-				if (it->to == to)
-					tmp2.push_back(it->MessageID);
+			for (const auto &it : maildata_ID)
+				if (it.second->to == to)
+					tmp2.push_back(it.first);
 			if (tmp.empty())
 				tmp = tmp2;
 			else
@@ -383,10 +366,14 @@ public:
 		if (start_time != 0LL || end_time != 0LL)
 		{
 			std::vector<int> tmp2;
-			for (const auto &it : maildata_set)
-				if (it->datetime.time_number >= start_time &&
-					it->datetime.time_number <= end_time)
-					tmp2.push_back(it->MessageID);
+			for (const auto &it : maildata_ID)
+			{
+				if (it.second->datetime.time_number >= start_time &&
+					it.second->datetime.time_number <= end_time)
+				{
+					tmp2.push_back(it.first);
+				}
+			}
 			if (tmp.empty())
 				tmp = tmp2;
 			else
@@ -397,64 +384,83 @@ public:
 				tmp = tmp3;
 			}
 		}
-		const std::vector<int> init = tmp;
-		for (const auto &it : postfix)
+		std::vector<std::vector<int>> calculate;
+		if (!expression.empty())
 		{
-			if (isalnum(it.front()))
+			const std::vector<int> init = tmp;
+			const std::vector<std::string> &postfix = to_postfix(expression);
+			calculate.reserve(10000);
+			for (const auto &it : postfix)
 			{
-				calculate.push_back(std::vector<int>());
-				for (const auto &it2 : tmp)
+				if (isalnum(it.front()))
 				{
-					const std::set<std::string> &found = maildata_ID.at(it2)->content;
-					if (found.find(it) != found.end())
-						calculate.back().push_back(it2);
+					std::vector<int> tmp_found;
+					tmp_found.reserve(10000);
+					for (const auto &it2 : tmp)
+					{
+						const std::set<std::string> &found = maildata_ID.at(it2)->content;
+						if (found.find(it) != found.end())
+							tmp_found.push_back(it2);
+					}
+					calculate.push_back(tmp_found);
+				}
+				else
+				{
+					if (it.front() == '!')
+					{
+						std::vector<int> tmp2;
+						std::set_difference(init.cbegin(), init.cend(), calculate.back().cbegin(),
+											calculate.back().cend(), std::inserter(tmp2, tmp2.end()));
+						calculate.back() = tmp2;
+					}
+					else if (it.front() == '&')
+					{
+						if (calculate.size() < 2)
+							throw std::out_of_range(std::string("calculate error: calculate.size() = ") +
+													std::to_string(calculate.size()));
+						std::vector<int> tmp2;
+						std::set_intersection(calculate.crbegin()->cbegin(), calculate.crbegin()->cend(),
+											  (calculate.crbegin() + 1)->cbegin(),
+											  (calculate.crbegin() + 1)->cend(),
+											  std::inserter(tmp2, tmp2.end()));
+						calculate.pop_back();
+						calculate.back() = tmp2;
+					}
+					else if (it.front() == '|')
+					{
+						if (calculate.size() < 2)
+							throw std::out_of_range(std::string("calculate error: calculate.size() = ") +
+													std::to_string(calculate.size()));
+						std::vector<int> tmp2;
+						std::set_union(calculate.crbegin()->cbegin(), calculate.crbegin()->cend(),
+									   (calculate.crbegin() + 1)->cbegin(),
+									   (calculate.crbegin() + 1)->cend(), std::inserter(tmp2, tmp2.end()));
+						calculate.pop_back();
+						calculate.back() = tmp2;
+					}
 				}
 			}
-			else
-			{
-				if (it.front() == '!')
-				{
-					std::vector<int> tmp2;
-					std::set_difference(calculate.back().cbegin(), calculate.back().cend(),
-										init.cbegin(), init.cend(), tmp2.begin());
-					calculate.back() = tmp2;
-				}
-				else if (it.front() == '&')
-				{
-					std::vector<int> tmp2;
-					std::set_intersection(calculate.back().cbegin(), calculate.back().cend(),
-										  calculate.at(calculate.size() - 2).cbegin(),
-										  calculate.at(calculate.size() - 2).cend(), tmp2.begin());
-					calculate.pop_back();
-					calculate.back() = tmp2;
-				}
-				else if (it.front() == '|')
-				{
-					std::vector<int> tmp2;
-					std::set_union(calculate.back().cbegin(), calculate.back().cend(),
-								   calculate.at(calculate.size() - 2).cbegin(),
-								   calculate.at(calculate.size() - 2).cend(), tmp2.begin());
-					calculate.pop_back();
-					calculate.back() = tmp2;
-				}
-			}
+		}
+		else
+		{
+			calculate.push_back(tmp);
 		}
 		if (calculate.size() != 1)
 			throw std::runtime_error(std::string("calculate error: calculate.size() = ") +
 									 std::to_string(calculate.size()));
 		if (calculate.front().empty())
 		{
-			std::cout << "-\n";
+			out << "-\n";
 			return;
 		}
-		std::cout << *(calculate.front().cbegin());
+		out << *(calculate.front().cbegin());
 		auto it = calculate.front().cbegin();
 		it++;
 		for (; it != calculate.front().cend(); ++it)
 		{
-			std::cout << ' ' << *it;
+			out << ' ' << *it;
 		}
-		std::cout << "\n";
+		out << "\n";
 		return;
 	}
 	void longest(std::ostream &out = std::cout) const
@@ -464,12 +470,12 @@ public:
 			out << "-\n";
 			return;
 		}
-		out << (*maildata_set.crbegin())->MessageID << ' '
-			<< (*maildata_set.crbegin())->charcount << '\n';
+		out << (*maildata_longest.crbegin())->MessageID << ' '
+			<< (*maildata_longest.crbegin())->charcount << '\n';
 	}
 
 private:
-	int priority(const char &s)
+	const int priority(const char &s) const
 	{
 		enum operator_priority
 		{
@@ -486,17 +492,20 @@ private:
 		else
 			throw std::out_of_range(std::string("Invalid operator: ") + s);
 	}
-	const std::vector<std::string> to_postfix(const std::string &expression)
+	const std::vector<std::string> to_postfix(const std::string &expression) const
 	{
 		std::string stack;
 		std::vector<std::string> postfix;
-		stack.reserve(1000);
-		postfix.reserve(1000);
+		stack.reserve(100);
+		postfix.reserve(100);
 		auto it = expression.cbegin();
 		while (it != expression.cend())
 		{
 			if (*it == '(')
+			{
 				stack.push_back(*it);
+				++it;
+			}
 			else if (*it == ')')
 			{
 				while (stack.back() != '(')
@@ -540,7 +549,7 @@ private:
 		return postfix;
 	}
 #ifdef DEBUG
-	void printPostfix(const std::vector<std::string> &postfix, std::ostream &out = std::cout)
+	void printPostfix(const std::vector<std::string> &postfix, std::ostream &out = std::cout) const
 	{
 		std::vector<std::string>::const_iterator it;
 		for (it = postfix.cbegin(); it != postfix.cend(); ++it)
@@ -557,10 +566,19 @@ private:
 		return;
 	}
 #endif
+	struct less_charcount
+	{
+		bool operator()(const Mail *x, const Mail *y)
+		{
+			if (x->charcount == y->charcount)
+				return x->MessageID < y->MessageID;
+			return x->charcount < y->charcount;
+		}
+	};
 	int count;
 	std::unordered_map<std::string, Mail> maildata_path;
-	std::unordered_map<int, Mail *const> maildata_ID;
-	std::set<Mail *, std::less<Mail *>> maildata_set;
+	std::map<int, Mail *const> maildata_ID;
+	std::set<Mail *, less_charcount> maildata_longest;
 };
 
 #endif

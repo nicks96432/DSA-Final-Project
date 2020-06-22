@@ -5,4 +5,5 @@ clean:
 run:
 	run
 debug_run:
-	/usr/bin/time -v ./run
+	g++ main.cpp -o run -O2 -std=c++14 -DDEBUG
+	run < 2.in
