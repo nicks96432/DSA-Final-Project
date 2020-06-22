@@ -50,6 +50,9 @@ inline void string_lower(std::string &str)
  */
 class Mail
 {
+	friend class Mails;
+	friend struct std::less<Mail *>;
+
 public:
 	Mail()
 	{
@@ -160,6 +163,7 @@ public:
 		}
 		file.close();
 	}
+#ifdef DEBUG
 	void print(std::ostream &out = std::cout) const
 	{
 		const std::string number_to_month[12] =
@@ -196,11 +200,11 @@ public:
 		mail.print(out);
 		return out;
 	}
+#endif
+private:
 	int charcount;
 	bool isopen;
 	int MessageID;
-
-private:
 	struct Datetime
 	{
 		Datetime()
@@ -257,7 +261,7 @@ public:
 			else
 			{
 				it->second.isopen = true;
-				maildata_heap.insert(&it->second);
+				maildata_set.insert(&it->second);
 				out << ++count << '\n';
 				return;
 			}
@@ -267,7 +271,7 @@ public:
 			Mail mail(path);
 			maildata_path[path] = mail;
 			maildata_ID.insert(std::pair<int, Mail *const>(mail.MessageID, &maildata_path[path]));
-			maildata_heap.insert(&maildata_path[path]);
+			maildata_set.insert(&maildata_path[path]);
 			out << ++count << '\n';
 		}
 	}
@@ -280,6 +284,7 @@ public:
 			return;
 		}
 		it->second->isopen = false;
+		maildata_set.erase(maildata_ID.at(id));
 		out << --count << '\n';
 	}
 	/* 
@@ -291,20 +296,9 @@ public:
 	 */
 	void query(const std::string &commands, std::ostream &out = std::cout)
 	{
-		for (int i = 0; i < 3; i++)
-		{
-			if (answers[i].command == commands)
-			{
-				auto it = answers[i].answer.cbegin();
-				for (; it != answers[i].answer.cend() - 1; ++it)
-					cout << *it << ' ';
-				cout << *it;
-				return;
-			}
-		}
 		std::string from, to, expression;
 		std::string::const_iterator start;
-		long long start_time, end_time;
+		long long start_time = 0LL, end_time = 0LL;
 		for (auto it = commands.cbegin() + 1; it < commands.cend(); ++it)
 		{
 			if (*it == ' ')
@@ -320,6 +314,7 @@ public:
 					while (*it != '\"')
 						++it;
 					from = std::string(start, it);
+					string_lower(from);
 					break;
 				case 't':
 					it += 2;
@@ -327,13 +322,14 @@ public:
 					while (*it != '\"')
 						++it;
 					to = std::string(start, it);
+					string_lower(to);
 					break;
 				case 'd':
 					start = ++it;
 					while (it < commands.end() && *it != '~')
 						++it;
 					if (start == it)
-						start_time = 0;
+						start_time = ~0x7FFFFFFFFFFFFFFFLL;
 					else
 						start_time = std::stoll(std::string(start, it));
 					start = ++it;
@@ -355,7 +351,110 @@ public:
 				break;
 			}
 		}
-		parseExpression();
+		const std::vector<std::string> &postfix = to_postfix(expression);
+		std::vector<std::vector<int>> calculate;
+		calculate.reserve(10000);
+		std::vector<int> tmp;
+		if (from.empty() && to.empty() && start_time == 0LL && end_time == 0LL)
+			std::transform(maildata_set.cbegin(), maildata_set.cend(),
+						   std::inserter(tmp, tmp.end()), [](const auto *pair) -> int { return pair->MessageID; });
+		else if (!from.empty())
+		{
+			for (const auto &it : maildata_set)
+				if (it->from == from)
+					tmp.push_back(it->MessageID);
+		}
+		if (!to.empty())
+		{
+			std::vector<int> tmp2;
+			for (const auto &it : maildata_set)
+				if (it->to == to)
+					tmp2.push_back(it->MessageID);
+			if (tmp.empty())
+				tmp = tmp2;
+			else
+			{
+				std::vector<int> tmp3;
+				std::set_intersection(tmp.cbegin(), tmp.cend(), tmp2.cbegin(),
+									  tmp2.cend(), tmp3.begin());
+				tmp = tmp3;
+			}
+		}
+		if (start_time != 0LL || end_time != 0LL)
+		{
+			std::vector<int> tmp2;
+			for (const auto &it : maildata_set)
+				if (it->datetime.time_number >= start_time &&
+					it->datetime.time_number <= end_time)
+					tmp2.push_back(it->MessageID);
+			if (tmp.empty())
+				tmp = tmp2;
+			else
+			{
+				std::vector<int> tmp3;
+				std::set_intersection(tmp.cbegin(), tmp.cend(), tmp2.cbegin(),
+									  tmp2.cend(), tmp3.begin());
+				tmp = tmp3;
+			}
+		}
+		const std::vector<int> init = tmp;
+		for (const auto &it : postfix)
+		{
+			if (isalnum(it.front()))
+			{
+				calculate.push_back(std::vector<int>());
+				for (const auto &it2 : tmp)
+				{
+					const std::set<std::string> &found = maildata_ID.at(it2)->content;
+					if (found.find(it) != found.end())
+						calculate.back().push_back(it2);
+				}
+			}
+			else
+			{
+				if (it.front() == '!')
+				{
+					std::vector<int> tmp2;
+					std::set_difference(calculate.back().cbegin(), calculate.back().cend(),
+										init.cbegin(), init.cend(), tmp2.begin());
+					calculate.back() = tmp2;
+				}
+				else if (it.front() == '&')
+				{
+					std::vector<int> tmp2;
+					std::set_intersection(calculate.back().cbegin(), calculate.back().cend(),
+										  calculate.at(calculate.size() - 2).cbegin(),
+										  calculate.at(calculate.size() - 2).cend(), tmp2.begin());
+					calculate.pop_back();
+					calculate.back() = tmp2;
+				}
+				else if (it.front() == '|')
+				{
+					std::vector<int> tmp2;
+					std::set_union(calculate.back().cbegin(), calculate.back().cend(),
+								   calculate.at(calculate.size() - 2).cbegin(),
+								   calculate.at(calculate.size() - 2).cend(), tmp2.begin());
+					calculate.pop_back();
+					calculate.back() = tmp2;
+				}
+			}
+		}
+		if (calculate.size() != 1)
+			throw std::runtime_error(std::string("calculate error: calculate.size() = ") +
+									 std::to_string(calculate.size()));
+		if (calculate.front().empty())
+		{
+			std::cout << "-\n";
+			return;
+		}
+		std::cout << *(calculate.front().cbegin());
+		auto it = calculate.front().cbegin();
+		it++;
+		for (; it != calculate.front().cend(); ++it)
+		{
+			std::cout << ' ' << *it;
+		}
+		std::cout << "\n";
 		return;
 	}
 	void longest(std::ostream &out = std::cout) const
@@ -365,31 +464,103 @@ public:
 			out << "-\n";
 			return;
 		}
-		out << (*maildata_heap.crbegin())->MessageID << ' '
-			<< (*maildata_heap.crbegin())->charcount << '\n';
+		out << (*maildata_set.crbegin())->MessageID << ' '
+			<< (*maildata_set.crbegin())->charcount << '\n';
 	}
 
 private:
-	void parseExpression()
+	int priority(const char &s)
 	{
-	}
-	struct Answer
-	{
-		Answer()
+		enum operator_priority
 		{
-			answer.reserve(10000);
-			command.reserve(5000);
-			for (auto &it : answer)
-				it.reserve(5000);
+			NOT = 3,
+			AND = 4,
+			OR = 5,
+		};
+		if (s == '!')
+			return NOT;
+		else if (s == '&')
+			return AND;
+		else if (s == '|')
+			return OR;
+		else
+			throw std::out_of_range(std::string("Invalid operator: ") + s);
+	}
+	const std::vector<std::string> to_postfix(const std::string &expression)
+	{
+		std::string stack;
+		std::vector<std::string> postfix;
+		stack.reserve(1000);
+		postfix.reserve(1000);
+		auto it = expression.cbegin();
+		while (it != expression.cend())
+		{
+			if (*it == '(')
+				stack.push_back(*it);
+			else if (*it == ')')
+			{
+				while (stack.back() != '(')
+				{
+					std::string tmp(1, stack.back());
+					stack.pop_back();
+					postfix.push_back(tmp);
+				}
+				stack.pop_back();
+				++it;
+			}
+			else if (std::isalnum(*it))
+			{
+				auto start = it;
+				while (std::isalnum(*it))
+					++it;
+				std::string keyword(start, it);
+				string_lower(keyword);
+				postfix.push_back(keyword);
+			}
+			else // operators
+			{
+				int prior = priority(*it);
+				while (!(stack.empty()) && (stack.back() != '(') &&
+					   priority(stack.back()) <= prior && prior != 3)
+				{
+					std::string tmp(1, stack.back());
+					postfix.push_back(tmp);
+					stack.pop_back();
+				}
+				stack.push_back(*it);
+				it++;
+			}
 		}
-		std::vector<int> answer;
-		std::string command;
-	};
+		while (!stack.empty())
+		{
+			std::string tmp(1, stack.back());
+			postfix.push_back(tmp);
+			stack.pop_back();
+		}
+		return postfix;
+	}
+#ifdef DEBUG
+	void printPostfix(const std::vector<std::string> &postfix, std::ostream &out = std::cout)
+	{
+		std::vector<std::string>::const_iterator it;
+		for (it = postfix.cbegin(); it != postfix.cend(); ++it)
+		{
+			if ((*it) == "+u")
+				out << '+';
+			else if ((*it) == "-u")
+				out << '-';
+			else
+				out << (*it);
+			if (it != postfix.cend() - 1)
+				out << ' ';
+		}
+		return;
+	}
+#endif
 	int count;
 	std::unordered_map<std::string, Mail> maildata_path;
 	std::unordered_map<int, Mail *const> maildata_ID;
-	std::set<Mail *, std::less<Mail *>> maildata_heap;
-	Answer answers[3];
+	std::set<Mail *, std::less<Mail *>> maildata_set;
 };
 
 #endif
