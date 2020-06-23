@@ -36,14 +36,15 @@ int tolower(char c);
 void s_tolower(string &s);
 bool isalnum(char c);
 int epoch(string &s);
-int nepoch(string &s, int i);
+int nepoch(string &s);
 gp_hash_table<string, int> paths; // path was loaded, to ID
 gp_hash_table<string, gp_hash_table<int, bool> > from2ID;
 gp_hash_table<string, gp_hash_table<int, bool> > to2ID;
-vector<Mail> mails(10001);
+Mail mails[10001];
 gp_hash_table<string, bool> valid; // path was valid
 map<int, set<int> > count2ID;
 map<int, set<int> > date2ID;
+bitset<20> check;
 int N;
 void add() {
 	string path;
@@ -236,7 +237,6 @@ void query() {
 					postfix[i].next_is_binary = 0;
 			}
 			postfix[size].next_is_binary = 0;
-			bitset<20> check;
 			if (only) {
 				for (auto itr = valid.begin(); itr != valid.end(); itr++) {
 					int i = paths[itr->first];
@@ -450,12 +450,13 @@ void query() {
 		} else if (s[1] == 'd') {
 			s.erase(0, 2);
 			if (s.length() > 0 && s[0] == '~') {
-				dateEnd = nepoch(s, 1);
+				s.erase(0, 1);
+				dateEnd = nepoch(s);
 			} else if (s.length() > 12 && s[12] == '~') {
-				dateStart = nepoch(s, 0);
+				dateStart = nepoch(s);
 				s.erase(0, 13);
 				if (s.length() != 0)
-					dateEnd = nepoch(s, 0);
+					dateEnd = nepoch(s);
 			}
 		}
 		only = false;
@@ -563,13 +564,13 @@ int epoch(string &s) {
  	+ month * 65536 
  	+ ((s[index - 8] - '0') * 10 + (s[index - 7] - '0')) * 1048576;
 }
-int nepoch(string &s, int i) {
+int nepoch(string &s) {
 	// int year, month, day, hour, minute;
-	return 1048576 * ((s[i + 2] - '0') * 10 + (s[i + 3] - '0'))
-		+ 65536 * ((s[i + 4] - '0') * 10 + (s[i + 5] - '0'))
-		+ 2048 * ((s[i + 6] - '0') * 10 + (s[i + 7] - '0'))
-	    + 64 * ((s[i + 8] - '0') * 10 + (s[i + 9] - '0'))
-		+ ((s[i + 10] - '0') * 10 + (s[i + 11] - '0'));
+	return 1048576 * ((s[2] - '0') * 10 + (s[3] - '0'))
+		+ 65536 * ((s[4] - '0') * 10 + (s[5] - '0'))
+		+ 2048 * ((s[6] - '0') * 10 + (s[7] - '0'))
+	    + 64 * ((s[8] - '0') * 10 + (s[9] - '0'))
+		+ ((s[10] - '0') * 10 + (s[11] - '0'));
 	// assert(1 <= day && day <= 31);
 	// assert(1 <= month && month <= 12);
 	// assert(6 <= year && year <= 12);
