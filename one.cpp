@@ -19,9 +19,8 @@ struct Mail {
 	string to;
 	int date;
 	int count;
-	int ID;
 	gp_hash_table<string, bool> words;
-	Mail(): ID(0), count(0) {}
+	Mail(): count(0) {}
 };
 struct Token {
 	int type;
@@ -41,7 +40,7 @@ int nepoch(string &s, int i);
 gp_hash_table<string, int> paths; // path was loaded, to ID
 gp_hash_table<string, gp_hash_table<int, bool> > from2ID;
 gp_hash_table<string, gp_hash_table<int, bool> > to2ID;
-vector<Mail> mails(10000);
+vector<Mail> mails(10001);
 gp_hash_table<string, bool> valid; // path was valid
 map<int, set<int> > count2ID;
 map<int, set<int> > date2ID;
@@ -70,14 +69,10 @@ void add() {
 		int ID = 0;
 		for (int i = 0; i < line.length(); i++)
 			ID = ID * 10 + (line[i] - '0');
-		if (mails.size() <= ID)
-			mails.resize(ID * 2);
 		mails[ID].from = from;
 		mails[ID].path = path;
 		mails[ID].date = date;
-		mails[ID].ID = ID;
  		getline(fin, line);
-
 		// assert(line[7] == ':');
 		line.erase(0, 9);
 		int l = line.length();
@@ -107,12 +102,12 @@ void add() {
 			string t;
 			while (i < l && isalnum(line[i])) {
 				t.push_back(tolower(line[i]));
-				mails[ID].count++;
 				i++;
 			}
 			// if (t.size() != 0) {
 				// cout << "content: " << t << " " << t.size() << endl;
 				mails[ID].words[t] = true;
+				mails[ID].count += t.size();
 			// }
 		}
 		
@@ -131,11 +126,12 @@ void add() {
 	} else {
 		if (valid.find(path) == valid.end()) {
 			valid[path] = true;
-			Mail *current = &mails[paths[path]];
-			from2ID[current->from][current->ID] = true;
-			to2ID[current->to][current->ID] = true;
-			count2ID[current->count].insert(current->ID);
-			date2ID[current->date].insert(current->ID);
+			int id = paths[path];
+			Mail *current = &mails[id];
+			from2ID[current->from][id] = true;
+			to2ID[current->to][id] = true;
+			count2ID[current->count].insert(id);
+			date2ID[current->date].insert(id);
 			N++;
 			printf("%d\n", N);
 		} else {
@@ -169,9 +165,6 @@ void longest() {
 				printf("%d %d\n", *a, mails[*a].count);
 				break;
 			}
-			// for (a = itr->second.begin(); a != itr->second.end() && !ok; a++)
-					// ok = true;
-
 		}
 	}
 	else
@@ -243,10 +236,10 @@ void query() {
 					postfix[i].next_is_binary = 0;
 			}
 			postfix[size].next_is_binary = 0;
+			bitset<20> check;
 			if (only) {
 				for (auto itr = valid.begin(); itr != valid.end(); itr++) {
 					int i = paths[itr->first];
-					bitset<20> check;
 					int length = postfix.size();
 					int top = 0;
 					for (int j = 0; j < length; j++) {
@@ -295,11 +288,10 @@ void query() {
 						int i = itr->first;
 						if (!to.empty() && mails[i].to != to)
 							continue;
-						if (dateStart != INT_MIN && mails[i].date < dateStart)
+						if (mails[i].date < dateStart)
 							continue;
-						if (dateEnd != INT_MAX && mails[i].date > dateEnd)
+						if (mails[i].date > dateEnd)
 							continue;
-						bitset<20> check;
 						int length = postfix.size();
 						int top = 0;
 						for (int j = 0; j < length; j++) {
@@ -345,11 +337,10 @@ void query() {
 				} else if (!to.empty()) {
 					for (auto itr = to2ID[to].begin(); itr != to2ID[to].end(); itr++) {
 						int i = itr->first;
-						if (dateStart != INT_MIN && mails[i].date < dateStart)
+						if (mails[i].date < dateStart)
 							continue;
-						if (dateEnd != INT_MAX && mails[i].date > dateEnd)
+						if (mails[i].date > dateEnd)
 							continue;
-						bitset<20> check;
 						int length = postfix.size();
 						int top = 0;
 						for (int j = 0; j < length; j++) {
@@ -400,7 +391,6 @@ void query() {
 						set<int>::iterator sitr;
 						for (sitr = itr->second.begin(); sitr != itr->second.end(); sitr++) {
 							int i = *sitr;
-							bitset<20> check;
 							int length = postfix.size();
 							int top = 0;
 							for (int j = 0; j < length; j++) {
