@@ -9,22 +9,26 @@
 #include <cassert>
 #include <climits>
 #include <fstream>
+#include <bitset>
+#include <ext/pb_ds/assoc_container.hpp>
 using namespace std;
+using namespace __gnu_pbds;
 struct Mail {
 	string path;
 	string from;
 	string to;
 	int date;
-	int ID;
 	int count;
-	unordered_set<string> words;
+	int ID;
+	gp_hash_table<string, bool> words;
 	Mail(): ID(0), count(0) {}
 };
 struct Token {
 	int type;
 	string expression;
 	int op;
-	Token() : type(0) {};
+	int next_is_binary;
+	Token() : type(0), next_is_binary(0) {};
 	Token(Token const &b): type(b.type), expression(b.expression), op(b.op) {};
 	Token operator=(Token const &a) { Token b(a); return b; }
 };
@@ -34,11 +38,11 @@ void s_tolower(string &s);
 bool isalnum(char c);
 int epoch(string &s);
 int nepoch(string &s, int i);
-unordered_map<string, int> paths; // path was loaded, to ID
-unordered_map<string, unordered_set<int> > from2ID;
-unordered_map<string, unordered_set<int> > to2ID;
-vector<Mail> mails;
-unordered_set<string> valid; // path was valid
+gp_hash_table<string, int> paths; // path was loaded, to ID
+gp_hash_table<string, gp_hash_table<int, bool> > from2ID;
+gp_hash_table<string, gp_hash_table<int, bool> > to2ID;
+vector<Mail> mails(10000);
+gp_hash_table<string, bool> valid; // path was valid
 map<int, set<int> > count2ID;
 map<int, set<int> > date2ID;
 int N;
@@ -50,23 +54,30 @@ void add() {
 		printf("%d\n", N);
 		ifstream fin;
 		fin.open(path, ifstream::in);
-		Mail current;
-		current.path = path;
-		getline(fin, current.from);
-		current.from.erase(0, 6);
-		s_tolower(current.from);
+		string from;
+		getline(fin, from);
+		from.erase(0, 6);
+		s_tolower(from);
 		// cout << current.from << endl;
 		string line;
 		getline(fin, line);
 		// assert(line[4] == ':');
 		line.erase(0, 6);
-		current.date = epoch(line);
+		int date = epoch(line);
 		getline(fin, line);
 		// assert(line[10] == ':');
 		line.erase(0, 12);
+		int ID = 0;
 		for (int i = 0; i < line.length(); i++)
-			current.ID = current.ID * 10 + (line[i] - '0');
-		getline(fin, line);
+			ID = ID * 10 + (line[i] - '0');
+		if (mails.size() <= ID)
+			mails.resize(ID * 2);
+		mails[ID].from = from;
+		mails[ID].path = path;
+		mails[ID].date = date;
+		mails[ID].ID = ID;
+ 		getline(fin, line);
+
 		// assert(line[7] == ':');
 		line.erase(0, 9);
 		int l = line.length();
@@ -80,13 +91,13 @@ void add() {
 			}
 			// if (t.size() != 0) {
 				// cout << "subject: " << t << " " << t.size() << endl;
-				current.words.insert(t);
+				mails[ID].words[t] = true;
 			// }
 		}
-		getline(fin, current.to);
-		// assert(current.to[2] == ':');
-		current.to.erase(0, 4);
-		s_tolower(current.to);
+		getline(fin, mails[ID].to);
+		// assert(mails[ID].to[2] == ':');
+		mails[ID].to.erase(0, 4);
+		s_tolower(mails[ID].to);
 		getline(fin, line);
 		getline(fin, line, '\0');
 		l = line.length();
@@ -96,23 +107,21 @@ void add() {
 			string t;
 			while (i < l && isalnum(line[i])) {
 				t.push_back(tolower(line[i]));
-				current.count++;
+				mails[ID].count++;
 				i++;
 			}
 			// if (t.size() != 0) {
 				// cout << "content: " << t << " " << t.size() << endl;
-				current.words.insert(t);
+				mails[ID].words[t] = true;
 			// }
 		}
-		if (mails.size() <= current.ID)
-			mails.resize(current.ID * 2);
-		mails[current.ID] = current;
-		valid.insert(path);
-		paths[path] = current.ID;
-		from2ID[current.from].insert(current.ID);
-		to2ID[current.to].insert(current.ID);
-		count2ID[current.count].insert(current.ID);
-		date2ID[current.date].insert(current.ID);
+		
+		valid[path] = true;
+		paths[path] = ID;
+		from2ID[mails[ID].from][ID] = true;
+		to2ID[mails[ID].to][ID] = true;
+		count2ID[mails[ID].count].insert(ID);
+		date2ID[mails[ID].date].insert(ID);
 		/*cout << endl << endl;
 		cout << "From: " << current->from << endl;
 		cout << "date: " << current->date << endl;
@@ -121,10 +130,10 @@ void add() {
 		cout << "subject: " << line << endl;*/
 	} else {
 		if (valid.find(path) == valid.end()) {
-			valid.insert(path);
+			valid[path] = true;
 			Mail *current = &mails[paths[path]];
-			from2ID[current->from].insert(current->ID);
-			to2ID[current->to].insert(current->ID);
+			from2ID[current->from][current->ID] = true;
+			to2ID[current->to][current->ID] = true;
 			count2ID[current->count].insert(current->ID);
 			date2ID[current->date].insert(current->ID);
 			N++;
@@ -138,31 +147,31 @@ void remove() {
 	int id;
 	cin >> id;
 	string path = mails[id].path;
-	unordered_set<string>::iterator itr;
-	itr = valid.find(path);
-	if (itr != valid.end()) {
+	if (valid.find(path) != valid.end()) {
 		N--;
 		printf("%d\n", N);
 		count2ID[mails[id].count].erase(id);
 		from2ID[mails[id].from].erase(id);
 		to2ID[mails[id].to].erase(id);
 		date2ID[mails[id].date].erase(id);
-		valid.erase(itr);
+		valid.erase(path);
 	} else {
 		printf("-\n");
 	}
 }
 void longest() {
 	if (N != 0) {
-		bool ok = false;
+		// bool ok = false;
 		map<int, set<int> >::reverse_iterator itr;
-		for (itr = count2ID.rbegin(); itr != count2ID.rend() && !ok; itr++) {
-			set<int>::iterator a;
-			for (a = itr->second.begin(); a != itr->second.end() && !ok; a++)
-				if (valid.find(mails[*a].path) != valid.end()) {
-					printf("%d %d\n", *a, mails[*a].count);
-					ok = true;
-				}
+		for (itr = count2ID.rbegin(); itr != count2ID.rend(); itr++) {
+			set<int>::iterator a = itr->second.begin();
+			if (a != itr->second.end()) {
+				printf("%d %d\n", *a, mails[*a].count);
+				break;
+			}
+			// for (a = itr->second.begin(); a != itr->second.end() && !ok; a++)
+					// ok = true;
+
 		}
 	}
 	else
@@ -183,10 +192,10 @@ void query() {
 				if (isalnum(s[i])) {
 					Token current;
 					current.type = 1;
-					while (i < length && isalnum(s[i])) {
+					do {
 						current.expression.push_back(tolower(s[i]));
 						i++;
-					}
+					} while (i < length && isalnum(s[i]));
 					postfix.push_back(current);
 				} else {
 					Token current;
@@ -204,10 +213,10 @@ void query() {
 					if (current.op == 6) {
 						operators.push(current);
 					} else if (current.op == 5) {
-						while (operators.top().op != 6) {
+						do {
 							postfix.push_back(operators.top());
 							operators.pop();
-						}
+						} while (operators.top().op != 6);
 						operators.pop();
 					} else {
 						while (!operators.empty() && operators.top().op < current.op) {
@@ -223,35 +232,56 @@ void query() {
 				postfix.push_back(operators.top());
 				operators.pop();
 			}
+			for (int i = postfix.size() - 2; i >= 0; i--)
+				if (!postfix[i].type && !postfix[i + 1].type && postfix[i].op == 2 && postfix[i + 1].op == 2)
+					postfix.erase(postfix.begin() + i, postfix.begin() + i + 2);
+			int size = postfix.size() - 1;
+			for (int i = 0; i < size; i++) {
+				if (postfix[i].type && !postfix[i + 1].type && (postfix[i + 1].op == 3 || postfix[i + 1].op == 4))
+					postfix[i].next_is_binary = postfix[i + 1].op;
+				else
+					postfix[i].next_is_binary = 0;
+			}
+			postfix[size].next_is_binary = 0;
 			if (only) {
-				unordered_set<string>::iterator itr;
-				for (itr = valid.begin(); itr != valid.end(); itr++) {
-					int i = paths[*itr];
-					if (!to.empty() && mails[i].to != to)
-						continue;
-					if (dateStart != INT_MIN && mails[i].date < dateStart)
-						continue;
-					if (dateEnd != INT_MAX && mails[i].date > dateEnd)
-						continue;
-					vector<bool> check;
+				for (auto itr = valid.begin(); itr != valid.end(); itr++) {
+					int i = paths[itr->first];
+					bitset<20> check;
 					int length = postfix.size();
+					int top = 0;
 					for (int j = 0; j < length; j++) {
 						if (postfix[j].type == 1) {
-							if (mails[i].words.find(postfix[j].expression) != mails[i].words.end())
-								check.push_back(true);
-							else
-								check.push_back(false);
-						}
-						else {
+							if (postfix[j].next_is_binary == 3) {
+								if (mails[i].words.find(postfix[j].expression) == mails[i].words.end())
+									check.reset(top - 1);
+								j++;
+							} else if (postfix[j].next_is_binary == 4) {
+								if (mails[i].words.find(postfix[j].expression) != mails[i].words.end())
+									check.set(top - 1);
+								j++;
+							} else {
+								if (mails[i].words.find(postfix[j].expression) != mails[i].words.end())
+									check.set(top);
+								else
+									check.reset(top);
+								top++;
+							}
+						} else {
 							int back = check.size() - 1;
 							if (postfix[j].op == 2) 
-								check[back] = !check[back];
+								check.flip(top - 1);
 							else if (postfix[j].op == 3) {
-								check[back - 1] = (check[back] && check[back - 1]);
-								check.pop_back();
+								top--;
+								if (check.test(top) & check.test(top - 1))
+									check.set(top - 1);
+								else
+									check.reset(top - 1);
 							} else {
-								check[back - 1] = (check[back] || check[back - 1]);
-								check.pop_back();
+								top--;
+								if (check.test(top) | check.test(top - 1))
+									check.set(top - 1);
+								else
+									check.reset(top - 1);
 							}
 						}
 					}
@@ -261,34 +291,50 @@ void query() {
 				}
 			} else {
 				if (!from.empty()) {
-					unordered_set<int>::iterator itr;
-					for (itr = from2ID[from].begin(); itr != from2ID[from].end(); itr++) {
-						int i = *itr;
+					for (auto itr = from2ID[from].begin(); itr != from2ID[from].end(); itr++) {
+						int i = itr->first;
 						if (!to.empty() && mails[i].to != to)
 							continue;
 						if (dateStart != INT_MIN && mails[i].date < dateStart)
 							continue;
 						if (dateEnd != INT_MAX && mails[i].date > dateEnd)
 							continue;
-						vector<bool> check;
+						bitset<20> check;
 						int length = postfix.size();
+						int top = 0;
 						for (int j = 0; j < length; j++) {
 							if (postfix[j].type == 1) {
-								if (mails[i].words.find(postfix[j].expression) != mails[i].words.end())
-									check.push_back(true);
-								else
-									check.push_back(false);
-							}
-							else {
+								if (postfix[j].next_is_binary == 3) {
+									if (mails[i].words.find(postfix[j].expression) == mails[i].words.end())
+										check.reset(top - 1);
+									j++;
+								} else if (postfix[j].next_is_binary == 4) {
+									if (mails[i].words.find(postfix[j].expression) != mails[i].words.end())
+										check.set(top - 1);
+									j++;
+								} else {
+									if (mails[i].words.find(postfix[j].expression) != mails[i].words.end())
+										check.set(top);
+									else
+										check.reset(top);
+									top++;
+								}
+							} else {
 								int back = check.size() - 1;
 								if (postfix[j].op == 2) 
-									check[back] = !check[back];
+									check.flip(top - 1);
 								else if (postfix[j].op == 3) {
-									check[back - 1] = (check[back] && check[back - 1]);
-									check.pop_back();
+									top--;
+									if (check.test(top) & check.test(top - 1))
+										check.set(top - 1);
+									else
+										check.reset(top - 1);
 								} else {
-									check[back - 1] = (check[back] || check[back - 1]);
-									check.pop_back();
+									top--;
+									if (check.test(top) | check.test(top - 1))
+										check.set(top - 1);
+									else
+										check.reset(top - 1);
 								}
 							}
 						}
@@ -297,32 +343,48 @@ void query() {
 							answer.insert(i);
 					}
 				} else if (!to.empty()) {
-					unordered_set<int>::iterator itr;
-					for (itr = to2ID[to].begin(); itr != to2ID[to].end(); itr++) {
-						int i = *itr;
+					for (auto itr = to2ID[to].begin(); itr != to2ID[to].end(); itr++) {
+						int i = itr->first;
 						if (dateStart != INT_MIN && mails[i].date < dateStart)
 							continue;
 						if (dateEnd != INT_MAX && mails[i].date > dateEnd)
 							continue;
-						vector<bool> check;
+						bitset<20> check;
 						int length = postfix.size();
+						int top = 0;
 						for (int j = 0; j < length; j++) {
 							if (postfix[j].type == 1) {
-								if (mails[i].words.find(postfix[j].expression) != mails[i].words.end())
-									check.push_back(true);
-								else
-									check.push_back(false);
-							}
-							else {
+								if (postfix[j].next_is_binary == 3) {
+									if (mails[i].words.find(postfix[j].expression) == mails[i].words.end())
+										check.reset(top - 1);
+									j++;
+								} else if (postfix[j].next_is_binary == 4) {
+									if (mails[i].words.find(postfix[j].expression) != mails[i].words.end())
+										check.set(top - 1);
+									j++;
+								} else {
+									if (mails[i].words.find(postfix[j].expression) != mails[i].words.end())
+										check.set(top);
+									else
+										check.reset(top);
+									top++;
+								}
+							} else {
 								int back = check.size() - 1;
 								if (postfix[j].op == 2) 
-									check[back] = !check[back];
+									check.flip(top - 1);
 								else if (postfix[j].op == 3) {
-									check[back - 1] = (check[back] && check[back - 1]);
-									check.pop_back();
+									top--;
+									if (check.test(top) & check.test(top - 1))
+										check.set(top - 1);
+									else
+										check.reset(top - 1);
 								} else {
-									check[back - 1] = (check[back] || check[back - 1]);
-									check.pop_back();
+									top--;
+									if (check.test(top) | check.test(top - 1))
+										check.set(top - 1);
+									else
+										check.reset(top - 1);
 								}
 							}
 						}
@@ -337,31 +399,48 @@ void query() {
 							break;
 						set<int>::iterator sitr;
 						for (sitr = itr->second.begin(); sitr != itr->second.end(); sitr++) {
-							vector<bool> check;
 							int i = *sitr;
+							bitset<20> check;
 							int length = postfix.size();
+							int top = 0;
 							for (int j = 0; j < length; j++) {
 								if (postfix[j].type == 1) {
-									if (mails[i].words.find(postfix[j].expression) != mails[i].words.end())
-										check.push_back(true);
-									else
-										check.push_back(false);
-								}
-								else {
+									if (postfix[j].next_is_binary == 3) {
+										if (mails[i].words.find(postfix[j].expression) == mails[i].words.end())
+											check.reset(top - 1);
+										j++;
+									} else if (postfix[j].next_is_binary == 4) {
+										if (mails[i].words.find(postfix[j].expression) != mails[i].words.end())
+											check.set(top - 1);
+										j++;
+									} else {
+										if (mails[i].words.find(postfix[j].expression) != mails[i].words.end())
+											check.set(top);
+										else
+											check.reset(top);
+										top++;
+									}
+								} else {
 									int back = check.size() - 1;
 									if (postfix[j].op == 2) 
-										check[back] = !check[back];
+										check.flip(top - 1);
 									else if (postfix[j].op == 3) {
-										check[back - 1] = (check[back] && check[back - 1]);
-										check.pop_back();
+										top--;
+										if (check.test(top) & check.test(top - 1))
+											check.set(top - 1);
+										else
+											check.reset(top - 1);
 									} else {
-										check[back - 1] = (check[back] || check[back - 1]);
-										check.pop_back();
+										top--;
+										if (check.test(top) | check.test(top - 1))
+											check.set(top - 1);
+										else
+											check.reset(top - 1);
 									}
 								}
 							}
 							// assert(check.size() == 1);
-							if (check[0])
+							if (check.test(0))
 								answer.insert(i);
 						}
 					}
@@ -373,13 +452,11 @@ void query() {
 			s.pop_back();
 			s_tolower(s);
 			from = s;
-			only = false;
 		} else if (s[1] == 't') {
 			s.erase(0, 3);
 			s.pop_back();
 			s_tolower(s);
 			to = s;
-			only = false;
 		} else if (s[1] == 'd') {
 			s.erase(0, 2);
 			if (s.length() > 0 && s[0] == '~') {
@@ -390,8 +467,8 @@ void query() {
 				if (s.length() != 0)
 					dateEnd = nepoch(s, 0);
 			}
-			only = false;
 		}
+		only = false;
 	}
 	bool start = true;
 	set<int>::iterator itr;
@@ -408,14 +485,13 @@ void query() {
 		printf("\n");
 }
 int main() {
-	char instruction[16];
-	while (scanf("%s", instruction) == 1) {
-		// cout << instruction << endl;
-		if (instruction[0] == 'a') 
+	string s;
+	while (cin >> s) {
+		if (s[0] == 'a') 
 			add();
-		else if (instruction[0] == 'r')
+		else if (s[0] == 'r')
 			remove();
-		else if (instruction[0] == 'l')
+		else if (s[0] == 'l')
 			longest();
 		else
 			query();
@@ -470,7 +546,7 @@ bool isalnum(char c) {
 int epoch(string &s) {
 	// cout << s << endl << s.size() << endl;
 	// assert('0' <= s[0] && s[0] <= '9'); 
-	int day, month, year, hour, minute;
+	int day, month;
 	int month_start = 2;
 	if ('0' <= s[1] && s[1] <= '9') {
 		day = (s[0] - '0') * 10 + (s[1] - '0');
@@ -484,26 +560,30 @@ int epoch(string &s) {
 	month = what_month(s, month_start);
 	// assert(1 <= month && month <= 12);
 	int index = s.rfind(':');
-	year = (s[index - 8] - '0') * 10 + (s[index - 7] - '0');
+	// year = (s[index - 8] - '0') * 10 + (s[index - 7] - '0');
 	// assert(6 <= year && year <= 12);
-	hour = (s[index - 2] - '0') * 10 + (s[index - 1] - '0');
+	// hour = ((s[index - 2] - '0') * 10 + (s[index - 1] - '0'));
 	// assert(0 <= hour && hour <= 23);
-	minute = (s[index + 1] - '0') * 10 + (s[index + 2] - '0');
+	// minute = ((s[index + 1] - '0') * 10 + (s[index + 2] - '0'));
 	// assert(0 <= minute && minute <= 59);
 	// cout << "time: " << minute << " " << hour << " " << day << " " << month << " " << year << endl;
- 	return minute + hour * 60 + day * 1440 + month * 46080 + year * 600000;
+ 	return ((s[index + 1] - '0') * 10 + (s[index + 2] - '0')) 
+ 	+ ((s[index - 2] - '0') * 10 + (s[index - 1] - '0')) * 64 
+ 	+ day * 2048 
+ 	+ month * 65536 
+ 	+ ((s[index - 8] - '0') * 10 + (s[index - 7] - '0')) * 1048576;
 }
 int nepoch(string &s, int i) {
-	int year, month, day, hour, minute;
-	year = (s[i + 2] - '0') * 10 + (s[i + 3] - '0');
-	month = (s[i + 4] - '0') * 10 + (s[i + 5] - '0');
-	day = (s[i + 6] - '0') * 10 + (s[i + 7] - '0');
-	hour = (s[i + 8] - '0') * 10 + (s[i + 9] - '0');
-	minute = (s[i + 10] - '0') * 10 + (s[i + 11] - '0');
+	// int year, month, day, hour, minute;
+	return 1048576 * ((s[i + 2] - '0') * 10 + (s[i + 3] - '0'))
+		+ 65536 * ((s[i + 4] - '0') * 10 + (s[i + 5] - '0'))
+		+ 2048 * ((s[i + 6] - '0') * 10 + (s[i + 7] - '0'))
+	    + 64 * ((s[i + 8] - '0') * 10 + (s[i + 9] - '0'))
+		+ ((s[i + 10] - '0') * 10 + (s[i + 11] - '0'));
 	// assert(1 <= day && day <= 31);
 	// assert(1 <= month && month <= 12);
 	// assert(6 <= year && year <= 12);
 	// assert(0 <= hour && hour <= 23);
 	// assert(0 <= minute && minute <= 59);
-	return minute + hour * 60 + day * 1440 + month * 46080 + year * 600000;
+	// return minute + hour * 60 + day * 1440 + month * 46080 + year * 600000;
 }
