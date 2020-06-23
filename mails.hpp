@@ -511,7 +511,7 @@ private:
 	}
 	struct less_charcount
 	{
-		bool operator()(const Mail *x, const Mail *y)
+		bool operator()(const Mail *x, const Mail *y) const
 		{
 			if (x->charcount == y->charcount)
 				return x->MessageID < y->MessageID;
